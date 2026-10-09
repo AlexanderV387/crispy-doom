@@ -653,12 +653,19 @@ static boolean ExpandSoundData_SDL(sfxinfo_t *sfxinfo,
     chunk = &snd->chunk;
 
     // If we can, use the standard / optimized SDL conversion routines.
+    // [3DS] Not there: SDL's resampler took 2.7 seconds at startup for all
+    // the sounds; the simple expansion below (with its low-pass filter) is
+    // instant.
 
+#ifdef __3DS__
+    if (false)
+#else
     if (samplerate <= mixer_freq
      && ConvertibleRatio(samplerate, mixer_freq)
      && SDL_BuildAudioCVT(&convertor,
                           bits == 16 ? AUDIO_S16 : AUDIO_U8, 1, samplerate,
                           mixer_format, mixer_channels, mixer_freq))
+#endif
     {
         convertor.len = length;
         convertor.buf = malloc(convertor.len * convertor.len_mult);

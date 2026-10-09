@@ -246,6 +246,15 @@ void I_InitSound(GameMission_t mission)
     // Auto configure the music pack directory.
     M_SetMusicPackDir();
 
+#ifdef __3DS__
+    // Tests saved 22050 Hz in the configuration: the OPL music sounded
+    // coarse. The audio thread has the third core to itself.
+    if (snd_samplerate < 44100)
+    {
+        snd_samplerate = 44100;
+    }
+#endif
+
     // Initialize the sound and music subsystems.
 
     if (!nosound && !screensaver_mode)

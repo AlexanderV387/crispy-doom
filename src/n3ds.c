@@ -177,19 +177,24 @@ static void DrawNumber(u32 *framebuffer, int number, int x, int y, int scale,
     }
 }
 
-static void DrawFrameCounter(void)
+// work_us: the frame's time without the vertical blank wait (the game and
+// composing the frame): how much of the 16.7 ms of a 60 FPS frame is used.
+static void DrawFrameCounter(int work_us)
 {
-    static int frames = 0, fps = 0, buffers_drawn = 0;
-    static u64 start = 0;
+    static int frames = 0, fps = 0, work_ms = 0, buffers_drawn = 0;
+    static u64 start = 0, work_total = 0;
     const u64 now = osGetTime();
     u32 *framebuffer;
 
     ++frames;
+    work_total += work_us;
 
     if (now - start >= 1000)
     {
         fps = (int) (frames * 1000 / (now - start));
+        work_ms = (int) ((work_total / frames + 500) / 1000);
         frames = 0;
+        work_total = 0;
         start = now;
         buffers_drawn = 0;
     }
@@ -201,8 +206,10 @@ static void DrawFrameCounter(void)
     }
 
     framebuffer = (u32 *) gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
-    FillBottom(framebuffer, BOTTOM_WIDTH - 34, 2, 32, 14, 0x000000FF);
-    DrawNumber(framebuffer, fps, BOTTOM_WIDTH - 31, 4, 2, 0xFFFFFFFF);
+    // Frames per second (white) and milliseconds of work per frame (green).
+    FillBottom(framebuffer, BOTTOM_WIDTH - 64, 2, 62, 14, 0x000000FF);
+    DrawNumber(framebuffer, fps, BOTTOM_WIDTH - 61, 4, 2, 0xFFFFFFFF);
+    DrawNumber(framebuffer, work_ms, BOTTOM_WIDTH - 31, 4, 2, 0x80FF80FF);
     GSPGPU_FlushDataCache(framebuffer, BOTTOM_WIDTH * TOP_HEIGHT * sizeof(u32));
     gfxScreenSwapBuffers(GFX_BOTTOM, false);
     ++buffers_drawn;
@@ -216,6 +223,7 @@ void N3DS_Present(const pixel_t *buffer, int width, int height,
 {
     static int rows[TOP_HEIGHT];
     static int rows_height = 0;
+    static u64 work_start = 0;
     u32 *framebuffer;
     int left, x, y, k;
 
@@ -245,15 +253,40 @@ void N3DS_Present(const pixel_t *buffer, int width, int height,
         rows_height = height;
     }
 
+    framebuffer = (u32 *) gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
+
+    // High resolution rendering (twice as wide and high): each screen pixel
+    // is the average of 2x2 pixels, the screen's height from its 400 rows.
     if (width > TOP_WIDTH)
     {
-        width = TOP_WIDTH;
+        const int screen_width = width / 2 > TOP_WIDTH ? TOP_WIDTH : width / 2;
+
+        left = (TOP_WIDTH - screen_width) / 2;
+        memset(framebuffer, 0, TOP_WIDTH * TOP_HEIGHT * sizeof(u32));
+
+        for (y = 0; y < TOP_HEIGHT; ++y)
+        {
+            const int source_y = y * height / TOP_HEIGHT;
+            const pixel_t *row0 = buffer + source_y * width;
+            const pixel_t *row1 = source_y + 1 < height ? row0 + width : row0;
+            u32 *pixel = framebuffer + left * TOP_HEIGHT + (TOP_HEIGHT - 1 - y);
+
+            for (x = 0; x < screen_width; ++x, pixel += TOP_HEIGHT)
+            {
+                // A quarter of each color (the 2 lowest bits are dropped).
+                *pixel = ((colors[row0[2 * x]] >> 2) & 0x3F3F3F3F)
+                       + ((colors[row0[2 * x + 1]] >> 2) & 0x3F3F3F3F)
+                       + ((colors[row1[2 * x]] >> 2) & 0x3F3F3F3F)
+                       + ((colors[row1[2 * x + 1]] >> 2) & 0x3F3F3F3F);
+            }
+        }
+
+        goto shown;
     }
 
     // The framebuffer is rotated: screen pixel (x, y) is at
     // [x * 240 + (239 - y)]. Copied 8 columns at a time, so the writes of
     // each source row stay in a few cache lines.
-    framebuffer = (u32 *) gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
     left = (TOP_WIDTH - width) / 2;
 
     if (left > 0)
@@ -279,10 +312,12 @@ void N3DS_Present(const pixel_t *buffer, int width, int height,
         }
     }
 
+shown:
     GSPGPU_FlushDataCache(framebuffer, TOP_WIDTH * TOP_HEIGHT * sizeof(u32));
     gfxScreenSwapBuffers(GFX_TOP, false);
-    DrawFrameCounter();
+    DrawFrameCounter((int) ((svcGetSystemTick() - work_start) / CPU_TICKS_PER_USEC));
     gspWaitForVBlank();
+    work_start = svcGetSystemTick();
 
     // In the log: the first frames reach the screen.
     {

@@ -39,6 +39,7 @@
 
 
 #include "r_data.h"
+#include "n3ds.h"
 #include "v_trans.h" // [crispy] tranmap, CRMAX
 #include "r_bmaps.h" // [crispy] R_BrightmapForTexName()
 
@@ -1101,8 +1102,41 @@ static void R_InitTranMap()
     {
 	// Compose a default transparent filter map based on PLAYPAL.
 	unsigned char *playpal = W_CacheLumpName("PLAYPAL", PU_STATIC);
+#ifdef __3DS__
+	// [3DS] Composing it took 4 seconds at every startup (65536 searches
+	// in the palette): it is kept in a file named after the palette and
+	// the filter, made the first time.
+	char cache_path[64];
+	unsigned int hash = 2166136261u + tran_filter_pct;
+	FILE *cache;
+	int k;
+
+	for (k = 0; k < 768; k++)
+	{
+	    hash = (hash ^ playpal[k]) * 16777619u;
+	}
+
+	M_snprintf(cache_path, sizeof(cache_path), N3DS_DATA_DIR "tranmap-%08x.dat", hash);
+#endif
 
 	tranmap = Z_Malloc(256*256, PU_STATIC, 0);
+
+#ifdef __3DS__
+	cache = fopen(cache_path, "rb");
+
+	if (cache != NULL && fread(tranmap, 1, 256*256, cache) == 256*256)
+	{
+	    fclose(cache);
+	    W_ReleaseLumpName("PLAYPAL");
+	    printf(":");
+	    return;
+	}
+
+	if (cache != NULL)
+	{
+	    fclose(cache);
+	}
+#endif
 	{
 	    byte *fg, *bg, blend[3], *tp = tranmap;
 	    int i, j, btmp;
@@ -1136,6 +1170,16 @@ static void R_InitTranMap()
 		}
 	    }
 	}
+
+#ifdef __3DS__
+	cache = fopen(cache_path, "wb");
+
+	if (cache != NULL)
+	{
+	    fwrite(tranmap, 1, 256*256, cache);
+	    fclose(cache);
+	}
+#endif
 
 	printf(".");
 
