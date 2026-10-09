@@ -36,7 +36,11 @@
 
 // Sound sample rate to use for digital output (Hz)
 
+#ifdef __3DS__
+int snd_samplerate = 22050;  // the OPL music emulation costs half as much
+#else
 int snd_samplerate = 44100;
+#endif
 
 // Maximum number of bytes to dedicate to allocated sound effects.
 // (Default: 64MB)

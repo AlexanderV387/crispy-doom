@@ -30,6 +30,7 @@
 #include "i_system.h"
 #include "m_argv.h"
 #include "m_misc.h"
+#include "n3ds.h"
 
 
 //
@@ -42,6 +43,19 @@ void D_DoomMain (void);
 
 int main(int argc, char **argv)
 {
+#ifdef __3DS__
+    // A .cia gets no arguments (a .3dsx gets its path).
+    static char *n3ds_argv[] = { "crispy-doom", NULL };
+
+    N3DS_Init();
+
+    if (argc < 1)
+    {
+        argc = 1;
+        argv = n3ds_argv;
+    }
+#endif
+
     // save arguments
 
     myargc = argc;

@@ -48,6 +48,7 @@
 
 #include "w_wad.h"
 #include "z_zone.h"
+#include "n3ds.h"
 
 #define DEFAULT_RAM 16*2 /* MiB [crispy] */
 #define MIN_RAM     4*4  /* MiB [crispy] */
@@ -341,6 +342,11 @@ void I_Error (const char *error, ...)
     // Pop up a GUI dialog box to show the error message, if the
     // game was not run from the console (and the user will
     // therefore be unable to otherwise see the message).
+#ifdef __3DS__
+    // No message boxes: the screens are set up again to show it.
+    SDL_Quit();
+    N3DS_ShowError(msgbuf);
+#else
     if (exit_gui_popup && !I_ConsoleStdout())
     {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
@@ -350,6 +356,7 @@ void I_Error (const char *error, ...)
     // abort();
 
     SDL_Quit();
+#endif
 
     exit(-1);
 }

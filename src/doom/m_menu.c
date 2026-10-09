@@ -18,6 +18,9 @@
 //
 
 
+#ifdef __3DS__
+#include "SDL.h"
+#endif
 #include <stdlib.h>
 #include <ctype.h>
 #include <time.h> // [crispy] strftime, localtime
@@ -2407,7 +2410,17 @@ boolean M_Responder (event_t* ev)
 #define JOY_BUTTON_MAPPED(x) ((x) >= 0)
 #define JOY_BUTTON_PRESSED(x) (JOY_BUTTON_MAPPED(x) && (ev->data1 & (1 << (x))) != 0)
 
-            if (JOY_BUTTON_PRESSED(joybfire))
+#ifdef __3DS__
+            // Nintendo layout in the menus: A accepts and B goes back,
+            // whatever the buttons do in the game.
+#define JOY_MENU_FORWARD SDL_CONTROLLER_BUTTON_A
+#define JOY_MENU_BACK SDL_CONTROLLER_BUTTON_B
+#else
+#define JOY_MENU_FORWARD joybfire
+#define JOY_MENU_BACK joybuse
+#endif
+
+            if (JOY_BUTTON_PRESSED(JOY_MENU_FORWARD))
             {
                 // Simulate a 'Y' keypress when Doom show a Y/N dialog with Fire button.
                 if (messageToPrint && messageNeedsInput)
@@ -2430,7 +2443,7 @@ boolean M_Responder (event_t* ev)
                 }
                 joywait = I_GetTime() + 5;
             }
-            if (JOY_BUTTON_PRESSED(joybuse))
+            if (JOY_BUTTON_PRESSED(JOY_MENU_BACK))
             {
                 // Simulate a 'N' keypress when Doom show a Y/N dialog with Use button.
                 if (messageToPrint && messageNeedsInput)

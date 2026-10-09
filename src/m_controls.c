@@ -21,6 +21,9 @@
 
 #include "m_config.h"
 #include "m_misc.h"
+#ifdef __3DS__
+#include "SDL.h"
+#endif
 
 //
 // Keyboard controls
@@ -216,21 +219,38 @@ int key_menu_reloadlevel = 0; // [crispy]
 // Joystick controls
 //
 
+#ifdef __3DS__
+// The project's FPS standard: R fires, A uses, B runs, L strafes, X / Y
+// change weapons, SELECT shows the map (SDL game controller buttons).
+int joybfire = SDL_CONTROLLER_BUTTON_RIGHTSHOULDER;
+int joybstrafe = SDL_CONTROLLER_BUTTON_LEFTSHOULDER;
+int joybuse = SDL_CONTROLLER_BUTTON_A;
+int joybspeed = SDL_CONTROLLER_BUTTON_B;
+#else
 int joybfire = 0;
 int joybstrafe = 1;
 int joybuse = 3;
 int joybspeed = 2;
+#endif
 
 int joybstrafeleft = -1;
 int joybstraferight = -1;
 
 int joybjump = -1;
 
+#ifdef __3DS__
+int joybprevweapon = SDL_CONTROLLER_BUTTON_Y;
+int joybnextweapon = SDL_CONTROLLER_BUTTON_X;
+
+int joybmenu = SDL_CONTROLLER_BUTTON_START;
+int joybautomap = SDL_CONTROLLER_BUTTON_BACK;
+#else
 int joybprevweapon = -1;
 int joybnextweapon = -1;
 
 int joybmenu = -1;
 int joybautomap = -1;
+#endif
 
 int joybuseartifact = -1;
 int joybinvleft = -1;

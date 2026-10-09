@@ -3,14 +3,18 @@
 # SDL2 packages for the 3DS; SDL supports it officially since 2.24).
 # SDL2_mixer is built without external decoders: Doom's music is MIDI,
 # played by Crispy Doom's own OPL emulation, and its sounds are raw PCM.
+# The patches in tools/3ds/patches are applied to SDL first.
 #
-# Run inside the devkitpro/devkitarm image, from the repository root.
+# Run from the repository root inside the devkitpro/devkitarm image (the
+# sources can be cloned beforehand outside it: deps-3ds/src/SDL and
+# deps-3ds/src/SDL_mixer).
 set -eu
 
 SDL_VERSION=2.30.9
 MIXER_VERSION=2.8.0
 PREFIX="$PWD/deps-3ds"
 WORK="$PWD/deps-3ds/src"
+PATCHES="$PWD/tools/3ds/patches"
 
 [ -f "$PREFIX/lib/libSDL2_mixer.a" ] && { echo "deps-3ds: already built"; exit 0; }
 
@@ -19,6 +23,12 @@ mkdir -p "$WORK"
     https://github.com/libsdl-org/SDL.git "$WORK/SDL"
 [ -d "$WORK/SDL_mixer" ] || git clone -q --depth 1 --branch "release-$MIXER_VERSION" \
     https://github.com/libsdl-org/SDL_mixer.git "$WORK/SDL_mixer"
+
+for patch in "$PATCHES"/sdl-*.patch; do
+    git -C "$WORK/SDL" apply --check "$patch" 2>/dev/null \
+        && git -C "$WORK/SDL" apply "$patch" \
+        || echo "$(basename "$patch"): already applied"
+done
 
 cmake -S "$WORK/SDL" -B "$WORK/SDL/build" \
     -DCMAKE_TOOLCHAIN_FILE="$DEVKITPRO/cmake/3DS.cmake" \

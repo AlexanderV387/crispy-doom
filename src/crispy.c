@@ -25,7 +25,14 @@ static crispy_t crispy_s = {
 	0,
 	.extautomap = 1,
 	.gamma = 9,  // default level is "OFF" for intermediate gamma levels
+#ifdef __3DS__
+	// The top screen is 400x240: the original resolution, widened, fills it.
+	// Uncapped: frames between tics are interpolated, up to the screen's 60.
+	.hires = 0,
+	.uncapped = 1,
+#else
 	.hires = 1,
+#endif
 	.soundfix = 1,
 #ifdef CRISPY_TRUECOLOR
 	.smoothlight = 1,

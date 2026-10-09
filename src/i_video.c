@@ -49,6 +49,7 @@
 #include "v_video.h"
 #include "w_wad.h"
 #include "z_zone.h"
+#include "n3ds.h"
 
 int SCREENWIDTH, SCREENHEIGHT, SCREENHEIGHT_4_3;
 int NONWIDEWIDTH; // [crispy] non-widescreen SCREENWIDTH
@@ -497,6 +498,13 @@ void I_GetEvent(void)
                 break;
 
             case SDL_QUIT:
+#ifdef __3DS__
+                // The HOME Menu closes the game: no "are you sure?".
+                if (N3DS_IsClosing())
+                {
+                    I_Quit();
+                }
+#endif
                 if (screensaver_mode)
                 {
                     I_Quit();
@@ -860,6 +868,16 @@ void I_FinishUpdate (void)
 
     // Draw disk icon before blit, if necessary.
     V_DrawDiskIcon();
+
+#ifdef __3DS__
+    // Straight into the framebuffer, paced by the vertical blank (instead
+    // of the SDL renderer and the frame rate limiter).
+    N3DS_Present(I_VideoBuffer, SCREENWIDTH, SCREENHEIGHT, palette,
+                 palette_to_set);
+    palette_to_set = false;
+    V_RestoreDiskBackground();
+    return;
+#endif
 
 #ifndef CRISPY_TRUECOLOR
     if (palette_to_set)

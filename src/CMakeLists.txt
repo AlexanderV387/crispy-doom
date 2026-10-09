@@ -9,7 +9,8 @@ set(COMMON_SOURCE_FILES
     i_main.c
     i_system.c           i_system.h
     m_argv.c             m_argv.h
-    m_misc.c             m_misc.h)
+    m_misc.c             m_misc.h
+    n3ds.c               n3ds.h)
 
 # Dedicated server (chocolate-server):
 
@@ -289,4 +290,16 @@ if (DEFINED EMSCRIPTEN)
     set_target_properties(mus2mid PROPERTIES LINK_FLAGS "-s USE_SDL=2")
 else()
     target_link_libraries(mus2mid SDL2::SDL2)
+endif()
+
+# Nintendo 3DS: .3dsx for the Homebrew Launcher.
+if(NINTENDO_3DS)
+    ctr_generate_smdh("${CMAKE_CURRENT_BINARY_DIR}/crispy-doom.smdh"
+        NAME "Crispy Doom"
+        DESCRIPTION "Doom, Heretic, Hexen and Strife"
+        AUTHOR "AlexanderV387, Fabian Greffrath"
+    )
+    ctr_create_3dsx("${PROGRAM_PREFIX}doom"
+        SMDH "${CMAKE_CURRENT_BINARY_DIR}/crispy-doom.smdh"
+    )
 endif()

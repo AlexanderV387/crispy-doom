@@ -40,10 +40,16 @@ static SDL_Joystick *joystick = NULL;
 
 // Standard default.cfg Joystick enable/disable
 
+#ifdef __3DS__
+// The 3DS buttons and sticks, through SDL's game controller mapping.
+static int usejoystick = 1;
+static int use_gamepad = 1;
+#else
 static int usejoystick = 0;
 
 // Use SDL_gamecontroller interface for the selected device
 static int use_gamepad = 0;
+#endif
 
 // SDL_GameControllerType of gamepad
 static int gamepad_type = 0;
@@ -55,7 +61,12 @@ static int joystick_index = -1;
 // Which joystick axis to use for horizontal movement, and whether to
 // invert the direction:
 
+#ifdef __3DS__
+// Dual stick: the Circle Pad moves and strafes, the C-stick turns.
+static int joystick_x_axis = SDL_CONTROLLER_AXIS_RIGHTX;
+#else
 static int joystick_x_axis = 0;
+#endif
 static int joystick_x_invert = 0;
 
 // Which joystick axis to use for vertical movement, and whether to
@@ -66,7 +77,11 @@ static int joystick_y_invert = 0;
 
 // Which joystick axis to use for strafing?
 
+#ifdef __3DS__
+static int joystick_strafe_axis = SDL_CONTROLLER_AXIS_LEFTX;
+#else
 static int joystick_strafe_axis = -1;
+#endif
 static int joystick_strafe_invert = 0;
 
 // Which joystick axis to use for looking?
@@ -76,9 +91,16 @@ static int joystick_look_invert = 0;
 
 // Configurable dead zone for each axis, specified as a percentage of the axis
 // max value.
+#ifdef __3DS__
+// The Circle Pad and the C-stick rest close to the center.
+static int joystick_x_dead_zone = 15;
+static int joystick_y_dead_zone = 15;
+static int joystick_strafe_dead_zone = 15;
+#else
 static int joystick_x_dead_zone = 33;
 static int joystick_y_dead_zone = 33;
 static int joystick_strafe_dead_zone = 33;
+#endif
 static int joystick_look_dead_zone = 33;
 
 int use_analog = 1; // [crispy] use analog by default
@@ -208,10 +230,9 @@ void I_InitGamepad(void)
     joystick_index = index;
     gamepad_type = SDL_GameControllerTypeForIndex(index);
 
-    if (strcmp(joystick_guid, ""))
-    {
-        joystick_guid = malloc(GUID_STRING_BUF_SIZE);
-    }
+    // Always a buffer of its own: the default is the literal "", which the
+    // GUID string was written into (a crash where literals are read-only).
+    joystick_guid = malloc(GUID_STRING_BUF_SIZE);
 
     guid = SDL_JoystickGetDeviceGUID(joystick_index);
     SDL_JoystickGetGUIDString(guid, joystick_guid, GUID_STRING_BUF_SIZE);
