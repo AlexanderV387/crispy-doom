@@ -65,3 +65,5 @@ GTAGS
 # clangd settings
 /.cache/clangd
 compile_commands.json
+deps-3ds/
+build-3ds/

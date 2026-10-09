@@ -43,6 +43,12 @@ if(ENABLE_SDL2_MIXER)
     if (NOT DEFINED EMSCRIPTEN)
         find_package(SDL2_mixer 2.0.2)
     endif()
+    # Only the static library exists (3DS): its target has another name, and
+    # it needs SDL2 after it on the link line (CMake keeps one SDL2, before).
+    if(TARGET SDL2_mixer::SDL2_mixer-static AND NOT TARGET SDL2_mixer::SDL2_mixer)
+        add_library(SDL2_mixer::SDL2_mixer INTERFACE IMPORTED)
+        target_link_libraries(SDL2_mixer::SDL2_mixer INTERFACE SDL2_mixer::SDL2_mixer-static -lSDL2)
+    endif()
 else()
     add_compile_definitions(DISABLE_SDL2MIXER=1)
 endif()
