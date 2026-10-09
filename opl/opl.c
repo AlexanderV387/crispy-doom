@@ -489,6 +489,38 @@ void OPL_Delay(uint64_t us)
     delay_data.mutex = SDL_CreateMutex();
     delay_data.cond = SDL_CreateCond();
 
+#ifdef __3DS__
+    // If the audio thread never mixes, the callback never comes: give up
+    // after 3 seconds instead of hanging (the data is left to the late
+    // callback, if it ever comes).
+    {
+        delay_data_t *data = malloc(sizeof(*data));
+        uint32_t start = SDL_GetTicks();
+
+        *data = delay_data;
+        OPL_SetCallback(us, DelayCallback, data);
+        SDL_LockMutex(data->mutex);
+
+        while (!data->finished)
+        {
+            SDL_CondWaitTimeout(data->cond, data->mutex, 100);
+
+            if (!data->finished && SDL_GetTicks() - start > 3000)
+            {
+                printf("OPL_Delay: the audio thread does not mix, giving up\n");
+                SDL_UnlockMutex(data->mutex);
+                return;
+            }
+        }
+
+        SDL_UnlockMutex(data->mutex);
+        SDL_DestroyMutex(data->mutex);
+        SDL_DestroyCond(data->cond);
+        free(data);
+        return;
+    }
+#endif
+
     OPL_SetCallback(us, DelayCallback, &delay_data);
 
     // Wait until the callback is invoked.

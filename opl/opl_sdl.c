@@ -183,6 +183,20 @@ static void OPL_Mix_Callback(int chan, void *stream, int len, void *udata)
     unsigned int filled, buffer_samples;
     Uint8 *buffer = (Uint8*)stream;
 
+#ifdef __3DS__
+    {
+        // In the log: the audio thread mixes (the first test hung waiting
+        // for it).
+        static int logged = 0;
+
+        if (!logged)
+        {
+            logged = 1;
+            printf("OPL_Mix_Callback: first call, %d bytes\n", len);
+        }
+    }
+#endif
+
     // Repeatedly call the OPL emulator update function until the buffer is
     // full.
     filled = 0;

@@ -1159,6 +1159,10 @@ static boolean I_SDL_InitSound(GameMission_t mission)
     ExpandSoundData = ExpandSoundData_SDL;
 
     Mix_QuerySpec(&mixer_freq, &mixer_format, &mixer_channels);
+#ifdef __3DS__
+    printf("I_SDL_InitSound: %s, %d Hz, %d channels\n",
+           SDL_GetCurrentAudioDriver(), mixer_freq, mixer_channels);
+#endif
 
 #ifdef HAVE_LIBSAMPLERATE
     if (use_libsamplerate != 0)
