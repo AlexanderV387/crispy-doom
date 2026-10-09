@@ -38,6 +38,11 @@ void AM_Ticker (void);
 // called instead of view drawer if automap active.
 void AM_Drawer (void);
 
+#ifdef __3DS__
+// [3DS] The automap on the bottom screen.
+void AM_DrawBottom(pixel_t *screen, int y, int width, int height);
+#endif
+
 // Called to force the automap to quit
 // if the level is completed while it is up.
 void AM_Stop (void);

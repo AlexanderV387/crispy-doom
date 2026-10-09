@@ -759,6 +759,39 @@ static default_collection_t doom_defaults =
 
 static default_t extra_defaults_list[] =
 {
+#ifdef __3DS__
+    //!
+    // Nintendo 3DS: show the automap on the bottom screen.
+    //
+
+    CONFIG_VARIABLE_INT(n3ds_bottom_map),
+
+    //!
+    // Nintendo 3DS: status bar on the bottom screen: 0 top (above the
+    // map), 1 middle, 2 bottom (below the map).
+    //
+
+    CONFIG_VARIABLE_INT(n3ds_hud_position),
+
+    //!
+    // Nintendo 3DS: blend rows when stretching the image to 240 rows.
+    //
+
+    CONFIG_VARIABLE_INT(n3ds_smooth_scaling),
+
+    //!
+    // Nintendo 3DS: frame counter on the bottom screen.
+    //
+
+    CONFIG_VARIABLE_INT(n3ds_show_fps),
+
+    //!
+    // Nintendo 3DS: version of the configuration, to update older ones.
+    //
+
+    CONFIG_VARIABLE_INT(n3ds_config_version),
+#endif
+
     //!
     // Name of the SDL video driver to use.  If this is an empty string,
     // the default video driver is used.
@@ -2994,6 +3027,14 @@ void M_SetConfigFilenames(const char *main_config, const char *extra_config)
 
 void M_SaveDefaults (void)
 {
+#ifdef __3DS__
+    // [3DS] Saved when the HOME Menu opened; closing from there.
+    if (N3DS_ConfigAlreadySaved())
+    {
+        return;
+    }
+#endif
+
     SaveDefaultCollection(&doom_defaults);
     SaveDefaultCollection(&extra_defaults);
 }
@@ -3307,6 +3348,10 @@ void M_SetMusicPackDir(void)
     // the directory.
     readme_path = M_StringJoin(music_pack_path, DIR_SEPARATOR_S,
                                "README.txt", NULL);
+#ifdef __3DS__
+    // [3DS] Not written again at every startup: it is a write to the SD card.
+    if (!M_FileExists(readme_path))
+#endif
     M_WriteFile(readme_path, MUSIC_PACK_README, strlen(MUSIC_PACK_README));
 
     free(readme_path);

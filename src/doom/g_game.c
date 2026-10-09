@@ -76,6 +76,10 @@
 
 
 #include "g_game.h"
+
+#ifdef __3DS__
+#include "n3ds.h"
+#endif
 #include "v_trans.h" // [crispy] colored "always run" message
 
 #include "deh_main.h" // [crispy] for demo footer
@@ -2601,7 +2605,13 @@ void G_DoSaveGame (void)
     // and then rename it at the end if it was successfully written.
     // This prevents an existing savegame from being overwritten by
     // a corrupted one, or if a savegame buffer overrun occurs.
+#ifdef __3DS__
+    // [3DS] Written over the old savegame: on the SD card, writing a new
+    // file sometimes takes seconds.
+    save_stream = N3DS_OpenRewrite(savegame_file);
+#else
     save_stream = M_fopen(temp_savegame_file, "wb");
+#endif
 
     if (save_stream == NULL)
     {
@@ -2654,6 +2664,13 @@ void G_DoSaveGame (void)
 
     // Finish up, close the savegame file.
 
+#ifdef __3DS__
+    if (recovery_savegame_file == NULL)
+    {
+        N3DS_CloseRewrite(save_stream);
+    }
+    else
+#endif
     fclose(save_stream);
 
     if (recovery_savegame_file != NULL)
@@ -2669,8 +2686,10 @@ void G_DoSaveGame (void)
     // Now rename the temporary savegame file to the actual savegame
     // file, overwriting the old savegame if there was one there.
 
+#ifndef __3DS__
     M_remove(savegame_file);
     M_rename(temp_savegame_file, savegame_file);
+#endif
 
     gameaction = ga_nothing;
     M_StringCopy(savedescription, "", sizeof(savedescription));

@@ -12,7 +12,7 @@
 // GNU General Public License for more details.
 //
 // DESCRIPTION:
-//     Nintendo 3DS: startup, the screen and fatal errors.
+//     Nintendo 3DS: startup, the screens, options and fatal errors.
 //
 
 #ifndef N3DS_H
@@ -41,6 +41,31 @@ void N3DS_Present(const pixel_t *buffer, int width, int height,
 
 // The HOME Menu is closing the game: only quit, as soon as possible.
 boolean N3DS_IsClosing(void);
+
+// The configuration was saved when the HOME Menu opened, and the game is
+// being closed from there: no need to write it again.
+boolean N3DS_ConfigAlreadySaved(void);
+
+// Set by the game once its configuration is loaded: saves it (called when
+// the HOME Menu opens, as the game may be closed from there).
+extern void (*N3DS_SaveOnSuspend)(void);
+
+// Options of the 3DS, saved in the configuration file.
+extern int n3ds_bottom_map;     // the automap on the bottom screen
+extern int n3ds_hud_position;   // status bar: 0 top, 1 middle, 2 bottom
+extern int n3ds_smooth_scaling; // blend rows when stretching to 240 rows
+extern int n3ds_show_fps;       // frame counter on the bottom screen
+extern int n3ds_config_version; // for changes to older configurations
+
+void N3DS_BindVariables(void);
+
+// Bottom screen, 8-bit like the game's own screen.
+#define N3DS_BOTTOM_WIDTH 320
+#define N3DS_BOTTOM_HEIGHT 240
+
+// Set by the game: draws the bottom screen and returns whether it shows
+// anything. When it does not, it stays black and a tap turns it off.
+extern boolean (*N3DS_DrawBottom)(pixel_t *screen);
 
 // Opens a file to write it again from the start, over its old contents:
 // on the SD card, writing a new or emptied file sometimes takes seconds (8

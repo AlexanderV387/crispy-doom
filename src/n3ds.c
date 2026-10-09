@@ -25,6 +25,7 @@
 
 #include <3ds.h>
 
+#include "m_config.h"
 #include "n3ds.h"
 
 // libctru's main thread stack is 32 KiB by default: too small for Doom.
@@ -63,6 +64,10 @@ static int LogWrite(void *cookie, const char *buffer, _READ_WRITE_BUFSIZE_TYPE s
     return (int) size;
 }
 
+static aptHookCookie apt_hook;
+static void AptHook(APT_HookType hook, void *param);
+static void RestoreBottomBacklight(void);
+
 void N3DS_Init(void)
 {
     osSetSpeedupEnable(true);
@@ -70,6 +75,9 @@ void N3DS_Init(void)
     mkdir("sdmc:/3ds", 0777);
     mkdir(N3DS_DATA_DIR, 0777);
     chdir(N3DS_DATA_DIR);
+
+    aptHook(&apt_hook, AptHook, NULL);
+    atexit(RestoreBottomBacklight);
 
     // There is no /tmp for the few temporary files left (M_TempFile).
     setenv("TMPDIR", N3DS_DATA_DIR, 1);
@@ -127,11 +135,134 @@ boolean N3DS_IsClosing(void)
 }
 
 // ==========================================================================
-// Frame counter on the bottom screen (320x240, rotated like the top one):
-// frames per second, small, in the top right corner. For the tests; it will
-// become an option (off by default), next to the map.
+// Options
 
-#define BOTTOM_WIDTH 320
+int n3ds_bottom_map = 1;
+int n3ds_hud_position = 0;
+int n3ds_smooth_scaling = 1;
+int n3ds_show_fps = 0;
+int n3ds_config_version = 0;
+
+void N3DS_BindVariables(void)
+{
+    M_BindIntVariable("n3ds_bottom_map",     &n3ds_bottom_map);
+    M_BindIntVariable("n3ds_hud_position",   &n3ds_hud_position);
+    M_BindIntVariable("n3ds_smooth_scaling", &n3ds_smooth_scaling);
+    M_BindIntVariable("n3ds_show_fps",       &n3ds_show_fps);
+    M_BindIntVariable("n3ds_config_version", &n3ds_config_version);
+}
+
+// ==========================================================================
+// HOME Menu, sleep mode and the bottom screen's backlight.
+//
+// The gsp::Lcd session is opened only around each change: keeping it open
+// froze the console at the HOME Menu (in Wolfenstein), which needs it.
+
+void (*N3DS_SaveOnSuspend)(void);
+
+static boolean config_saved;
+static boolean bottom_on = true;
+
+boolean N3DS_ConfigAlreadySaved(void)
+{
+    return config_saved && N3DS_IsClosing();
+}
+
+static void SetBottomBacklight(boolean on)
+{
+    if (R_FAILED(gspLcdInit()))
+    {
+        return;
+    }
+
+    if (on)
+    {
+        GSPLCD_PowerOnBacklight(GSPLCD_SCREEN_BOTTOM);
+    }
+    else
+    {
+        GSPLCD_PowerOffBacklight(GSPLCD_SCREEN_BOTTOM);
+    }
+
+    gspLcdExit();
+}
+
+// Never leave the HOME Menu or sleep mode with the bottom screen off.
+// The configuration is saved when the HOME Menu opens: the game may be
+// closed from there, and then the SD card is much slower.
+static void AptHook(APT_HookType hook, void *param)
+{
+    switch (hook)
+    {
+        case APTHOOK_ONSUSPEND:
+            if (N3DS_SaveOnSuspend != NULL)
+            {
+                N3DS_SaveOnSuspend();
+                config_saved = true;
+            }
+            // fall through
+        case APTHOOK_ONSLEEP:
+        case APTHOOK_ONEXIT:
+            if (!bottom_on)
+            {
+                SetBottomBacklight(true);
+            }
+            break;
+
+        case APTHOOK_ONRESTORE:
+            config_saved = false;
+            // fall through
+        case APTHOOK_ONWAKEUP:
+            if (!bottom_on)
+            {
+                SetBottomBacklight(false);
+            }
+            break;
+
+        default:
+            break;
+    }
+}
+
+static void RestoreBottomBacklight(void)
+{
+    if (!bottom_on)
+    {
+        SetBottomBacklight(true);
+    }
+}
+
+// A tap turns the bottom screen off or on, except while it shows the
+// status bar or the map; when they appear it turns on by itself.
+static void UpdateBottomBacklight(boolean showing)
+{
+    static boolean was_touching = false;
+    const boolean touching = (hidKeysHeld() & KEY_TOUCH) != 0;
+
+    if (touching && !was_touching && (!bottom_on || !showing))
+    {
+        bottom_on = !bottom_on;
+        SetBottomBacklight(bottom_on);
+    }
+    else if (showing && !bottom_on)
+    {
+        bottom_on = true;
+        SetBottomBacklight(true);
+    }
+
+    was_touching = touching;
+}
+
+// ==========================================================================
+// Bottom screen (320x240, rotated like the top one): what the game draws
+// (status bar, map), 30 times per second, and the frame counter.
+
+boolean (*N3DS_DrawBottom)(pixel_t *screen);
+
+static pixel_t bottom_screen[N3DS_BOTTOM_WIDTH * N3DS_BOTTOM_HEIGHT];
+
+// Palette in the framebuffer format (RGBA8: 0xRRGGBBAA).
+static u32 colors[256];
 
 static void FillBottom(u32 *framebuffer, int x, int y, int w, int h, u32 color)
 {
@@ -177,53 +308,113 @@ static void DrawNumber(u32 *framebuffer, int number, int x, int y, int scale,
     }
 }
 
-// work_us: the frame's time without the vertical blank wait (the game and
-// composing the frame): how much of the 16.7 ms of a 60 FPS frame is used.
-static void DrawFrameCounter(int work_us)
+// Frames per second, and the frame's time without the vertical blank wait
+// (the game and composing the frame): how much of the 16.7 ms of a 60 FPS
+// frame is used. Averaged over each second.
+static int counter_fps, counter_work_ms;
+
+static void CountFrame(int work_us)
 {
-    static int frames = 0, fps = 0, work_ms = 0, buffers_drawn = 0;
+    static int frames = 0;
     static u64 start = 0, work_total = 0;
     const u64 now = osGetTime();
-    u32 *framebuffer;
 
     ++frames;
     work_total += work_us;
 
     if (now - start >= 1000)
     {
-        fps = (int) (frames * 1000 / (now - start));
-        work_ms = (int) ((work_total / frames + 500) / 1000);
+        counter_fps = (int) (frames * 1000 / (now - start));
+        counter_work_ms = (int) ((work_total / frames + 500) / 1000);
         frames = 0;
         work_total = 0;
         start = now;
-        buffers_drawn = 0;
     }
-
-    // Both buffers of the bottom screen, once per second.
-    if (buffers_drawn >= 2)
-    {
-        return;
-    }
-
-    framebuffer = (u32 *) gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
-    // Frames per second (white) and milliseconds of work per frame (green).
-    FillBottom(framebuffer, BOTTOM_WIDTH - 64, 2, 62, 14, 0x000000FF);
-    DrawNumber(framebuffer, fps, BOTTOM_WIDTH - 61, 4, 2, 0xFFFFFFFF);
-    DrawNumber(framebuffer, work_ms, BOTTOM_WIDTH - 31, 4, 2, 0x80FF80FF);
-    GSPGPU_FlushDataCache(framebuffer, BOTTOM_WIDTH * TOP_HEIGHT * sizeof(u32));
-    gfxScreenSwapBuffers(GFX_BOTTOM, false);
-    ++buffers_drawn;
 }
 
-// Palette in the framebuffer format (RGBA8: 0xRRGGBBAA).
-static u32 colors[256];
+// In a corner of the map, away from the status bar: frames per second
+// (white) and milliseconds of work per frame (green).
+static void DrawFrameCounter(u32 *framebuffer)
+{
+    const int y = n3ds_hud_position == 0 ? N3DS_BOTTOM_HEIGHT - 16 : 2;
+
+    FillBottom(framebuffer, N3DS_BOTTOM_WIDTH - 64, y, 62, 14, 0x000000FF);
+    DrawNumber(framebuffer, counter_fps, N3DS_BOTTOM_WIDTH - 61, y + 2, 2,
+               0xFFFFFFFF);
+    DrawNumber(framebuffer, counter_work_ms, N3DS_BOTTOM_WIDTH - 31, y + 2, 2,
+               0x80FF80FF);
+}
+
+static void PresentBottom(void)
+{
+    // Whether each of the two buffers has anything but black.
+    static boolean drawn[2] = {true, true};
+    static int frame = 0, buffer = 0;
+    static boolean showing = false;
+    u32 *framebuffer;
+    int x, y, k;
+
+    // Every other frame: 30 per second.
+    if ((++frame & 1) == 0)
+    {
+        showing = N3DS_DrawBottom != NULL && N3DS_DrawBottom(bottom_screen);
+        framebuffer = (u32 *) gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
+
+        if (showing)
+        {
+            // 8 columns at a time, as on the top screen.
+            for (x = 0; x < N3DS_BOTTOM_WIDTH; x += 8)
+            {
+                u32 *column = framebuffer + x * TOP_HEIGHT + (TOP_HEIGHT - 1);
+
+                for (y = 0; y < N3DS_BOTTOM_HEIGHT; ++y)
+                {
+                    const pixel_t *source = bottom_screen + y * N3DS_BOTTOM_WIDTH + x;
+
+                    for (k = 0; k < 8; ++k)
+                    {
+                        column[k * TOP_HEIGHT - y] = colors[source[k]];
+                    }
+                }
+            }
+
+            drawn[buffer] = true;
+        }
+        else if (drawn[buffer])
+        {
+            memset(framebuffer, 0, N3DS_BOTTOM_WIDTH * TOP_HEIGHT * sizeof(u32));
+            drawn[buffer] = false;
+        }
+        else if (!n3ds_show_fps)
+        {
+            framebuffer = NULL; // already black
+        }
+
+        if (framebuffer != NULL)
+        {
+            if (n3ds_show_fps)
+            {
+                DrawFrameCounter(framebuffer);
+                drawn[buffer] = true;
+            }
+
+            GSPGPU_FlushDataCache(framebuffer,
+                                  N3DS_BOTTOM_WIDTH * TOP_HEIGHT * sizeof(u32));
+            gfxScreenSwapBuffers(GFX_BOTTOM, false);
+            buffer ^= 1;
+        }
+    }
+
+    UpdateBottomBacklight(showing);
+}
+
 
 void N3DS_Present(const pixel_t *buffer, int width, int height,
                   const SDL_Color *palette, boolean palette_changed)
 {
     static int rows[TOP_HEIGHT];
     static u32 weights[TOP_HEIGHT];
-    static int rows_height = 0, rows_width = 0;
+    static int rows_height = 0, rows_width = 0, rows_smooth = -1;
     static u64 work_start = 0;
     u32 *framebuffer;
     int left, x, y, k;
@@ -244,7 +435,8 @@ void N3DS_Present(const pixel_t *buffer, int width, int height,
     }
 
     // Source row of each screen row, and how much of the next one to blend.
-    if (rows_height != height || rows_width != width)
+    if (rows_height != height || rows_width != width
+     || rows_smooth != n3ds_smooth_scaling)
     {
         for (y = 0; y < TOP_HEIGHT; ++y)
         {
@@ -252,11 +444,13 @@ void N3DS_Present(const pixel_t *buffer, int width, int height,
             const int row = position / 256;
 
             rows[y] = row * width;
-            weights[y] = row + 1 < height ? position % 256 : 0;
+            weights[y] = row + 1 < height && n3ds_smooth_scaling ?
+                         position % 256 : 0;
         }
 
         rows_height = height;
         rows_width = width;
+        rows_smooth = n3ds_smooth_scaling;
     }
 
     framebuffer = (u32 *) gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
@@ -344,17 +538,19 @@ void N3DS_Present(const pixel_t *buffer, int width, int height,
 shown:
     GSPGPU_FlushDataCache(framebuffer, TOP_WIDTH * TOP_HEIGHT * sizeof(u32));
     gfxScreenSwapBuffers(GFX_TOP, false);
-    DrawFrameCounter((int) ((svcGetSystemTick() - work_start) / CPU_TICKS_PER_USEC));
+    PresentBottom();
+    CountFrame((int) ((svcGetSystemTick() - work_start) / CPU_TICKS_PER_USEC));
     gspWaitForVBlank();
     work_start = svcGetSystemTick();
 
-    // In the log: the first frames reach the screen.
+    // In the log: the first frame reaches the screen.
     {
-        static int frames = 0;
+        static boolean first = true;
 
-        if (++frames == 1 || frames == 300)
+        if (first)
         {
-            printf("N3DS_Present: frame %d (%dx%d)\n", frames, width, height);
+            printf("N3DS_Present: first frame (%dx%d)\n", width, height);
+            first = false;
         }
     }
 }

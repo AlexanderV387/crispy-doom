@@ -1886,7 +1886,12 @@ void I_InitGraphics(void)
     // setting the screen mode, so that the game doesn't start immediately
     // with the player unable to see anything.
 
+    // [3DS] The screens need no time: a second less at startup.
+#ifndef __3DS__
     if (fullscreen && !screensaver_mode)
+#else
+    if (false)
+#endif
     {
         SDL_Delay(startup_delay);
     }

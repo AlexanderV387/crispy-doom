@@ -71,6 +71,10 @@
 
 #include "d_pwad.h" // [crispy] kex secret level
 
+#ifdef __3DS__
+#include "n3ds.h"
+#endif
+
 //
 // defaulted values
 //
@@ -84,7 +88,11 @@ int			showMessages = 1;
 
 // Blocky mode, has default, 0 = high, 1 = normal
 int			detailLevel = 0;
+#ifdef __3DS__
+int			screenblocks = 11; // [3DS] full view: the status bar is below
+#else
 int			screenblocks = 10; // [crispy] increased
+#endif
 
 // temp for screenblocks (0-9)
 int			screenSize;
@@ -274,6 +282,10 @@ static void M_DrawCrispness1(void);
 static void M_DrawCrispness2(void);
 static void M_DrawCrispness3(void);
 static void M_DrawCrispness4(void);
+#ifdef __3DS__
+static void M_DrawN3DS(void);
+static void M_N3DSToggleSmooth(int choice);
+#endif
 
 
 
@@ -493,11 +505,20 @@ static menuitem_t Crispness1Menu[]=
 {
     {-1,"",0,'\0'},
     {3,"",	M_CrispyToggleHires,'h'},
+#ifdef __3DS__
+    // [3DS] Nothing to change (see M_DrawCrispness1).
+    {-1,"",0,'\0'},
+    {3,"",	M_CrispyToggleUncapped,'u'},
+    {-1,"",0,'\0'},
+    {-1,"",0,'\0'},
+    {3,"",	M_N3DSToggleSmooth,'s'},
+#else
     {3,"",	M_CrispyToggleWidescreen,'w'},
     {3,"",	M_CrispyToggleUncapped,'u'},
     {4,"",	M_CrispyToggleFpsLimit,'f'},
     {3,"",	M_CrispyToggleVsync,'v'},
     {3,"",	M_CrispyToggleSmoothScaling,'s'},
+#endif
     {-1,"",0,'\0'},
     {-1,"",0,'\0'},
     {3,"",	M_CrispyToggleColoredhud,'c'},
@@ -679,8 +700,83 @@ static menu_t  Crispness4Def =
     1
 };
 
+#ifdef __3DS__
+// [3DS] Options of the Nintendo 3DS: the first page of the Crispness menu.
+enum
+{
+    n3ds_sep_bottom,
+    n3ds_map,
+    n3ds_hud,
+    n3ds_fps,
+    n3ds_sep_bottom_,
+
+    n3ds_sep_top,
+    n3ds_smooth,
+    n3ds_sep_top_,
+
+    n3ds_next,
+    n3ds_prev,
+    n3ds_end
+} n3ds_e;
+
+static void M_N3DSToggleMap(int choice)
+{
+    n3ds_bottom_map = !n3ds_bottom_map;
+}
+
+// With the map: above or below it. Without: top, middle or bottom.
+static void M_N3DSToggleHud(int choice)
+{
+    if (n3ds_bottom_map)
+    {
+        n3ds_hud_position = n3ds_hud_position == 2 ? 0 : 2;
+    }
+    else
+    {
+        n3ds_hud_position = (n3ds_hud_position + (choice ? 1 : 2)) % 3;
+    }
+}
+
+static void M_N3DSToggleFps(int choice)
+{
+    n3ds_show_fps = !n3ds_show_fps;
+}
+
+static void M_N3DSToggleSmooth(int choice)
+{
+    n3ds_smooth_scaling = !n3ds_smooth_scaling;
+}
+
+static menuitem_t N3DSMenu[]=
+{
+    {-1,"",0,'\0'},
+    {3,"",	M_N3DSToggleMap,'m'},
+    {3,"",	M_N3DSToggleHud,'s'},
+    {3,"",	M_N3DSToggleFps,'f'},
+    {-1,"",0,'\0'},
+    {-1,"",0,'\0'},
+    {3,"",	M_N3DSToggleSmooth,'s'},
+    {-1,"",0,'\0'},
+    {1,"",	M_CrispnessNext,'n'},
+    {1,"",	M_CrispnessPrev,'p'},
+};
+
+static menu_t  N3DSDef =
+{
+    n3ds_end,
+    &OptionsDef,
+    N3DSMenu,
+    M_DrawN3DS,
+    48,18,
+    1
+};
+#endif
+
 static menu_t *CrispnessMenus[] =
 {
+#ifdef __3DS__
+	&N3DSDef,
+#endif
 	&Crispness1Def,
 	&Crispness2Def,
 	&Crispness3Def,
@@ -1534,6 +1630,7 @@ static void M_DrawCrispnessMultiItem(int y, const char *item, multiitem_t *multi
     M_WriteText(currentMenu->x, currentMenu->y + CRISPY_LINEHEIGHT * y, crispy_menu_text);
 }
 
+#ifndef __3DS__ // [3DS] only for the framerate limit
 static void M_DrawCrispnessNumericItem(int y, const char *item, int feat, const char *zero, boolean cond, const char *disabled)
 {
     char number[NUMERIC_ENTRY_NUMDIGITS + 2];
@@ -1554,6 +1651,7 @@ static void M_DrawCrispnessNumericItem(int y, const char *item, int feat, const 
                cond ? (feat || numeric_enter ? number : zero) : disabled);
     M_WriteText(currentMenu->x, currentMenu->y + CRISPY_LINEHEIGHT * y, crispy_menu_text);
 }
+#endif
 
 static void M_DrawCrispnessGoto(int y, const char *item)
 {
@@ -1561,6 +1659,49 @@ static void M_DrawCrispnessGoto(int y, const char *item)
                "%s%s", crstr[CR_GOLD], item);
     M_WriteText(currentMenu->x, currentMenu->y + CRISPY_LINEHEIGHT * y, crispy_menu_text);
 }
+
+#ifdef __3DS__
+static void M_DrawN3DSChoice(int y, const char *item, const char *value, boolean cond)
+{
+    M_snprintf(crispy_menu_text, sizeof(crispy_menu_text),
+               "%s%s: %s%s", cond ? crstr[CR_NONE] : crstr[CR_DARK], item,
+               cond ? crstr[CR_GREEN] : crstr[CR_DARK], value);
+    M_WriteText(currentMenu->x, currentMenu->y + CRISPY_LINEHEIGHT * y, crispy_menu_text);
+}
+
+static void M_DrawN3DS(void)
+{
+    static const char *const positions[] = {"Top", "Middle", "Bottom"};
+    const char *hud;
+
+    if (n3ds_bottom_map)
+    {
+        hud = n3ds_hud_position == 2 ? "Below the Map" : "Above the Map";
+    }
+    else
+    {
+        hud = positions[n3ds_hud_position % 3];
+    }
+
+    M_DrawCrispnessBackground();
+
+    M_DrawCrispnessHeader("Nintendo 3DS");
+
+    M_DrawCrispnessSeparator(n3ds_sep_bottom, "Bottom Screen");
+    M_DrawCrispnessItem(n3ds_map, "Automap", n3ds_bottom_map, true);
+    // The status bar is there with the full view (screen size 11).
+    M_DrawN3DSChoice(n3ds_hud, "Status Bar", hud, screenblocks == 11);
+    M_DrawCrispnessItem(n3ds_fps, "Frame Counter", n3ds_show_fps, true);
+
+    M_DrawCrispnessSeparator(n3ds_sep_top, "Top Screen");
+    M_DrawCrispnessItem(n3ds_smooth, "Smooth Pixel Scaling", n3ds_smooth_scaling, true);
+
+    M_DrawCrispnessGoto(n3ds_next, "Next Page >");
+    M_DrawCrispnessGoto(n3ds_prev, "< Last Page");
+
+    dp_translation = NULL;
+}
+#endif
 
 static void M_DrawCrispness1(void)
 {
@@ -1570,11 +1711,21 @@ static void M_DrawCrispness1(void)
 
     M_DrawCrispnessSeparator(crispness_sep_rendering, "Rendering");
     M_DrawCrispnessItem(crispness_hires, "High Resolution Rendering", crispy->hires, true);
+#ifdef __3DS__
+    // [3DS] The top screen sets the aspect ratio, the frame rate follows
+    // it, and the smooth scaling is on the Nintendo 3DS page.
+    M_DrawN3DSChoice(crispness_widescreen, "Aspect Ratio", "Match Screen", false);
+    M_DrawCrispnessItem(crispness_uncapped, "Uncapped Framerate", crispy->uncapped, true);
+    M_DrawN3DSChoice(crispness_fpslimit, "Framerate Limit", "60", false);
+    M_DrawN3DSChoice(crispness_vsync, "Enable VSync", "On", false);
+    M_DrawCrispnessItem(crispness_smoothscaling, "Smooth Pixel Scaling", n3ds_smooth_scaling, true);
+#else
     M_DrawCrispnessMultiItem(crispness_widescreen, "Aspect Ratio", multiitem_widescreen, crispy->widescreen, aspect_ratio_correct == 1);
     M_DrawCrispnessItem(crispness_uncapped, "Uncapped Framerate", crispy->uncapped, true);
     M_DrawCrispnessNumericItem(crispness_fpslimit, "Framerate Limit", crispy->fpslimit, "None", crispy->uncapped, "35");
     M_DrawCrispnessItem(crispness_vsync, "Enable VSync", crispy->vsync, !force_software_renderer);
     M_DrawCrispnessItem(crispness_smoothscaling, "Smooth Pixel Scaling", smooth_pixel_scaling, !force_software_renderer);
+#endif
 
     M_DrawCrispnessSeparator(crispness_sep_visual, "Visual");
     M_DrawCrispnessMultiItem(crispness_coloredhud, "Colorize HUD Elements", multiitem_coloredhud, crispy->coloredhud, true);
@@ -1585,7 +1736,11 @@ static void M_DrawCrispness1(void)
     M_DrawCrispnessItem(crispness_flipcorpses, "Randomly Mirrored Corpses", crispy->flipcorpses, gameversion != exe_chex);
 
     M_DrawCrispnessGoto(crispness1_next, "Next Page >");
+#ifdef __3DS__
+    M_DrawCrispnessGoto(crispness1_prev, "< Prev Page");
+#else
     M_DrawCrispnessGoto(crispness1_prev, "< Last Page");
+#endif
 
     dp_translation = NULL;
 }

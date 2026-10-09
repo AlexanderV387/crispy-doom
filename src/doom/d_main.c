@@ -79,6 +79,11 @@
 
 #include "d_main.h"
 
+#ifdef __3DS__
+#include "n3ds.h"
+#include "n3ds_doom.h"
+#endif
+
 #include "doom_icon.c"
 
 //
@@ -228,6 +233,10 @@ boolean D_Display (void)
 	    redrawsbar = true;
 	if (inhelpscreensstate && !inhelpscreens)
 	    redrawsbar = true;              // just put away the help screen
+#ifdef __3DS__
+	// [3DS] The bottom screen's status bar also updates the widgets.
+	redrawsbar = true;
+#endif
 	ST_Drawer (viewheight == SCREENHEIGHT, redrawsbar );
 	fullscreen = viewheight == SCREENHEIGHT;
 	break;
@@ -401,6 +410,9 @@ void D_BindVariables(void)
     I_BindVideoVariables();
     I_BindJoystickVariables();
     I_BindSoundVariables();
+#ifdef __3DS__
+    N3DS_BindVariables();
+#endif
 
     M_BindBaseControls();
     M_BindWeaponControls();
@@ -1660,6 +1672,18 @@ void D_DoomMain (void)
 
     // Save configuration at exit.
     I_AtExit(M_SaveDefaults, true); // [crispy] always save configuration at exit
+#ifdef __3DS__
+    // Configurations of the first tests: the full view, with the status
+    // bar on the bottom screen.
+    if (n3ds_config_version < 1)
+    {
+        screenblocks = 11;
+        n3ds_config_version = 1;
+    }
+
+    N3DS_SaveOnSuspend = M_SaveDefaults;
+    N3DS_DrawBottom = N3DS_DoomDrawBottom;
+#endif
 
     // Find main IWAD file and load it.
     iwadfile = D_FindIWAD(IWAD_MASK_DOOM, &gamemission);

@@ -342,6 +342,12 @@ static mpoint_t mapcenter;
 static angle_t mapangle;
 
 static void AM_drawCrosshair(int color, boolean force);
+static void AM_initColorShades(void);
+
+#ifdef __3DS__
+// [3DS] Mirrored columns: the bottom screen map has its own width.
+static int *am_flipx = flipscreenwidth;
+#endif
 
 // Calculates the slope and slope according to the x-axis of a line
 // segment in map coordinates (with the upright y-axis n' all) so
@@ -629,8 +635,6 @@ void AM_LevelInit(boolean reinit)
 {
     fixed_t a, b;
     static int f_h_old;
-    // [crispy] Only need to precalculate color lookup tables once
-    static int precalc_once;
 
     f_x = f_y = 0;
     f_w = SCREENWIDTH;
@@ -662,7 +666,15 @@ void AM_LevelInit(boolean reinit)
 
     f_h_old = f_h;
 
-    // [crispy] Precalculate color lookup tables for antialiased line drawing using COLORMAP
+    AM_initColorShades();
+}
+
+// [crispy] Precalculate color lookup tables for antialiased line drawing using COLORMAP
+static void AM_initColorShades(void)
+{
+    // [crispy] Only need to precalculate color lookup tables once
+    static int precalc_once;
+
     if (!precalc_once)
     {
         unsigned char *playpal = W_CacheLumpName("PLAYPAL", PU_STATIC);
@@ -1416,7 +1428,11 @@ AM_drawFline_Vanilla
 	return;
     }
 
+#ifdef __3DS__
+#define PUTDOT_RAW(xx,yy,cc) fb[(yy)*f_w+(am_flipx[xx])]=(cc)
+#else
 #define PUTDOT_RAW(xx,yy,cc) fb[(yy)*f_w+(flipscreenwidth[xx])]=(cc)
+#endif
 #ifndef CRISPY_TRUECOLOR
 #define PUTDOT(xx,yy,cc) PUTDOT_RAW(xx,yy,cc)
 #else
@@ -2304,3 +2320,125 @@ void AM_SetMarkPoints (int n, long *p)
 		markpoints[i].y = (int64_t)*p++;
 	}
 }
+
+#ifdef __3DS__
+// [3DS] The automap on the bottom screen, with its own functions: always
+// following the player, in a part of another buffer (width x height at row
+// y). Its zoom is set for each level as the automap's own, and follows the
+// automap's while that one is open.
+void AM_DrawBottom(pixel_t *screen, int y, int width, int height)
+{
+    static int bottom_flip[MAXWIDTH];
+    static fixed_t bottom_scale;
+    static int bottom_width, bottom_flipped = -1;
+    static int bottom_map = -1, bottom_episode = -1;
+
+    // The automap's state, put back at the end.
+    const int saved_f_x = f_x, saved_f_y = f_y, saved_f_w = f_w, saved_f_h = f_h;
+    const int64_t saved_m_x = m_x, saved_m_y = m_y, saved_m_x2 = m_x2,
+                  saved_m_y2 = m_y2, saved_m_w = m_w, saved_m_h = m_h;
+    const int64_t saved_next_m_x = next_m_x, saved_next_m_y = next_m_y;
+    const fixed_t saved_scale_mtof = scale_mtof, saved_scale_ftom = scale_ftom;
+    player_t *const saved_plr = plr;
+    const mpoint_t saved_mapcenter = mapcenter;
+    const angle_t saved_mapangle = mapangle;
+    pixel_t *const saved_buffer = I_VideoBuffer;
+    const int hires = crispy->hires;
+
+    if (bottom_width != width || bottom_flipped != crispy->fliplevels)
+    {
+        int i;
+
+        for (i = 0; i < width; ++i)
+        {
+            bottom_flip[i] = crispy->fliplevels ? width - 1 - i : i;
+        }
+
+        bottom_width = width;
+        bottom_flipped = crispy->fliplevels;
+    }
+
+    AM_initColorShades();
+
+    // Zoom of a new level, as in AM_LevelInit.
+    if (bottom_map != gamemap || bottom_episode != gameepisode)
+    {
+        fixed_t min_vx = INT_MAX, min_vy = INT_MAX;
+        fixed_t max_vx = -INT_MAX, max_vy = -INT_MAX;
+        fixed_t w, h, a, b;
+        int i;
+
+        for (i = 0; i < numvertexes; i++)
+        {
+            min_vx = MIN(min_vx, vertexes[i].x);
+            max_vx = MAX(max_vx, vertexes[i].x);
+            min_vy = MIN(min_vy, vertexes[i].y);
+            max_vy = MAX(max_vy, vertexes[i].y);
+        }
+
+        w = (max_vx >> FRACTOMAPBITS) - (min_vx >> FRACTOMAPBITS);
+        h = (max_vy >> FRACTOMAPBITS) - (min_vy >> FRACTOMAPBITS);
+        a = FixedDiv(width, (w>>MAPBITS < 2048) ? 2*(w>>MAPBITS) : 4096);
+        b = FixedDiv(height, (h>>MAPBITS < 2048) ? 2*(h>>MAPBITS) : 4096);
+        bottom_scale = FixedDiv(a < b ? a : b, (int) (0.7*MAPUNIT));
+
+        bottom_map = gamemap;
+        bottom_episode = gameepisode;
+    }
+
+    // The zoom of the open automap, in low resolution pixels.
+    if (automapactive)
+    {
+        bottom_scale = scale_mtof >> hires;
+    }
+
+    I_VideoBuffer = screen + y * width;
+    am_flipx = bottom_flip;
+    crispy->hires = 0;
+    plr = &players[displayplayer];
+    f_x = f_y = 0;
+    f_w = width;
+    f_h = height;
+    scale_mtof = bottom_scale;
+    scale_ftom = FixedDiv(FRACUNIT, scale_mtof);
+    m_w = FTOM(f_w);
+    m_h = FTOM(f_h);
+    AM_SetMapCenter(viewx, viewy);
+
+    if (crispy->automaprotate)
+    {
+        mapcenter.x = m_x + m_w / 2;
+        mapcenter.y = m_y + m_h / 2;
+        mapangle = ANG90 - plr->mo->angle;
+    }
+
+    AM_clearFB(BACKGROUND);
+    if (grid)
+        AM_drawGrid(GRIDCOLORS);
+    AM_drawWalls();
+    AM_drawPlayers();
+    if (cheating == 2)
+        AM_drawThings(THINGCOLORS, THINGRANGE);
+
+    crispy->hires = hires;
+    am_flipx = flipscreenwidth;
+    I_VideoBuffer = saved_buffer;
+    f_x = saved_f_x;
+    f_y = saved_f_y;
+    f_w = saved_f_w;
+    f_h = saved_f_h;
+    m_x = saved_m_x;
+    m_y = saved_m_y;
+    m_x2 = saved_m_x2;
+    m_y2 = saved_m_y2;
+    m_w = saved_m_w;
+    m_h = saved_m_h;
+    next_m_x = saved_next_m_x;
+    next_m_y = saved_next_m_y;
+    scale_mtof = saved_scale_mtof;
+    scale_ftom = saved_scale_ftom;
+    plr = saved_plr;
+    mapcenter = saved_mapcenter;
+    mapangle = saved_mapangle;
+}
+#endif

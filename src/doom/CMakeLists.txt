@@ -1,5 +1,6 @@
 add_library(doom STATIC
             am_map.c        am_map.h
+            n3ds_doom.c     n3ds_doom.h
             deh_ammo.c
             deh_bexincl.c
             deh_bexpars.c   deh_bexpars.h

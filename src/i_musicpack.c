@@ -1004,9 +1004,13 @@ static void LoadSubstituteConfigs(void)
 
 #ifdef __3DS__
     // [3DS] Looking for each known file name (with each extension) took 1.5
-    // seconds on the SD card: only when the folder has any file at all.
+    // seconds on the SD card: only when the folder has any other file.
+    // The folder always has the README.txt written by M_SetMusicPackDir.
     glob = I_StartGlob(musicdir, "*", 0);
-    path = I_NextGlob(glob);
+    do
+    {
+        path = I_NextGlob(glob);
+    } while (path != NULL && !strcasecmp(M_BaseName(path), "README.txt"));
     I_EndGlob(glob);
 
     if (path == NULL)
