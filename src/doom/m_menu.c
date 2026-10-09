@@ -2367,6 +2367,19 @@ boolean M_Responder (event_t* ev)
     ch = 0;
     key = -1;
 	
+#ifdef __3DS__
+    // The buttons act once per press: held, START opened and closed the menu
+    // over and over (the D-pad and the Circle Pad still repeat).
+    static int n3ds_last_buttons = 0;
+    int n3ds_pressed = 0;
+
+    if (ev->type == ev_joystick)
+    {
+        n3ds_pressed = ev->data1 & ~n3ds_last_buttons;
+        n3ds_last_buttons = ev->data1;
+    }
+#endif
+
     if (ev->type == ev_joystick)
     {
         // Simulate key presses from joystick events to interact with the menu.
@@ -2408,7 +2421,11 @@ boolean M_Responder (event_t* ev)
             }
 
 #define JOY_BUTTON_MAPPED(x) ((x) >= 0)
+#ifdef __3DS__
+#define JOY_BUTTON_PRESSED(x) (JOY_BUTTON_MAPPED(x) && (n3ds_pressed & (1 << (x))) != 0)
+#else
 #define JOY_BUTTON_PRESSED(x) (JOY_BUTTON_MAPPED(x) && (ev->data1 & (1 << (x))) != 0)
+#endif
 
 #ifdef __3DS__
             // Nintendo layout in the menus: A accepts and B goes back,

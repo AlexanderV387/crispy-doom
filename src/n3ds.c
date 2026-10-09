@@ -33,6 +33,36 @@ u32 __stacksize__ = 1024 * 1024;
 #define TOP_WIDTH 400
 #define TOP_HEIGHT 240
 
+// The log: each line with the time since startup, written at once (so it
+// survives a hang).
+static FILE *log_file;
+static u64 log_start;
+
+static int LogWrite(void *cookie, const char *buffer, _READ_WRITE_BUFSIZE_TYPE size)
+{
+    static boolean at_line_start = true;
+    int i;
+
+    for (i = 0; i < (int) size; ++i)
+    {
+        if (at_line_start)
+        {
+            fprintf(log_file, "%6llu ", (unsigned long long) (osGetTime() - log_start));
+            at_line_start = false;
+        }
+
+        fputc(buffer[i], log_file);
+
+        if (buffer[i] == '\n')
+        {
+            at_line_start = true;
+        }
+    }
+
+    fflush(log_file);
+    return (int) size;
+}
+
 void N3DS_Init(void)
 {
     osSetSpeedupEnable(true);
@@ -45,10 +75,10 @@ void N3DS_Init(void)
     setenv("TMPDIR", N3DS_DATA_DIR, 1);
 
     // The startup messages (and errors) go to a log: there is no console.
-    // Line buffered, so it survives a hang. The old log is blanked instead
-    // of emptied (see N3DS_OpenRewrite) and written over from the start;
-    // stderr is the same stream (threads inherit it), so their lines do not
-    // overwrite each other.
+    // The old log is blanked instead of emptied (see N3DS_OpenRewrite) and
+    // written over from the start. Every line starts with the milliseconds
+    // since startup: where startup spends its time. stderr is the same
+    // stream (threads inherit it), so their lines do not overwrite each other.
     {
         const char *path = N3DS_DATA_DIR "crispy-doom-log.txt";
         FILE *log = fopen(path, "r+b");
@@ -66,13 +96,27 @@ void N3DS_Init(void)
                 fputc(size % 64 == 0 ? '\n' : ' ', log);
             }
 
-            fclose(log);
+            rewind(log);
+        }
+        else
+        {
+            log = fopen(path, "wb");
         }
 
-        if (freopen(path, log != NULL ? "r+" : "w", stdout) != NULL)
+        if (log != NULL)
         {
-            setvbuf(stdout, NULL, _IOLBF, 0);
-            stderr = stdout;
+            FILE *stream;
+
+            log_file = log;
+            log_start = osGetTime();
+            stream = funopen(NULL, NULL, LogWrite, NULL, NULL);
+
+            if (stream != NULL)
+            {
+                setvbuf(stream, NULL, _IOLBF, 0);
+                stdout = stream;
+                stderr = stream;
+            }
         }
     }
 }
