@@ -42,7 +42,9 @@ void N3DS_Init(void)
 
     // The startup messages (and errors) go to a log: there is no console.
     // Line buffered, so it survives a hang.
-    if (freopen(N3DS_DATA_DIR "crispy-doom-log.txt", "w", stdout) != NULL)
+    // Both in append mode, so their lines do not overwrite each other.
+    if (freopen(N3DS_DATA_DIR "crispy-doom-log.txt", "w", stdout) != NULL
+        && freopen(N3DS_DATA_DIR "crispy-doom-log.txt", "a", stdout) != NULL)
     {
         setvbuf(stdout, NULL, _IOLBF, 0);
         freopen(N3DS_DATA_DIR "crispy-doom-log.txt", "a", stderr);
