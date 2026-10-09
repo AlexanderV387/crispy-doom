@@ -222,7 +222,8 @@ void N3DS_Present(const pixel_t *buffer, int width, int height,
                   const SDL_Color *palette, boolean palette_changed)
 {
     static int rows[TOP_HEIGHT];
-    static int rows_height = 0;
+    static u32 weights[TOP_HEIGHT];
+    static int rows_height = 0, rows_width = 0;
     static u64 work_start = 0;
     u32 *framebuffer;
     int left, x, y, k;
@@ -242,15 +243,20 @@ void N3DS_Present(const pixel_t *buffer, int width, int height,
         }
     }
 
-    // Source row of each screen row.
-    if (rows_height != height)
+    // Source row of each screen row, and how much of the next one to blend.
+    if (rows_height != height || rows_width != width)
     {
         for (y = 0; y < TOP_HEIGHT; ++y)
         {
-            rows[y] = (y * height / TOP_HEIGHT) * width;
+            const int position = y * height * 256 / TOP_HEIGHT;
+            const int row = position / 256;
+
+            rows[y] = row * width;
+            weights[y] = row + 1 < height ? position % 256 : 0;
         }
 
         rows_height = height;
+        rows_width = width;
     }
 
     framebuffer = (u32 *) gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
@@ -286,7 +292,9 @@ void N3DS_Present(const pixel_t *buffer, int width, int height,
 
     // The framebuffer is rotated: screen pixel (x, y) is at
     // [x * 240 + (239 - y)]. Copied 8 columns at a time, so the writes of
-    // each source row stay in a few cache lines.
+    // each source row stay in a few cache lines. Stretching 200 rows to 240,
+    // a screen row between two source rows is a blend of both (weights[y],
+    // out of 256): repeating one row in five left visible steps.
     left = (TOP_WIDTH - width) / 2;
 
     if (left > 0)
@@ -304,10 +312,31 @@ void N3DS_Present(const pixel_t *buffer, int width, int height,
         for (y = 0; y < TOP_HEIGHT; ++y)
         {
             const pixel_t *source = buffer + rows[y] + x;
+            const u32 weight = weights[y];
 
-            for (k = 0; k < columns; ++k)
+            if (weight == 0)
             {
-                column[k * TOP_HEIGHT - y] = colors[source[k]];
+                for (k = 0; k < columns; ++k)
+                {
+                    column[k * TOP_HEIGHT - y] = colors[source[k]];
+                }
+            }
+            else
+            {
+                const pixel_t *next = source + width;
+
+                for (k = 0; k < columns; ++k)
+                {
+                    const u32 c0 = colors[source[k]];
+                    const u32 c1 = colors[next[k]];
+                    // Two channels at a time in each 32-bit product.
+                    const u32 low = (((c0 & 0x00FF00FF) * (256 - weight)
+                                    + (c1 & 0x00FF00FF) * weight) >> 8) & 0x00FF00FF;
+                    const u32 high = (((c0 >> 8) & 0x00FF00FF) * (256 - weight)
+                                    + ((c1 >> 8) & 0x00FF00FF) * weight) & 0xFF00FF00;
+
+                    column[k * TOP_HEIGHT - y] = low | high;
+                }
             }
         }
     }
