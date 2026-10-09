@@ -18,6 +18,7 @@
 #ifdef __3DS__
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -39,6 +40,9 @@ void N3DS_Init(void)
     mkdir("sdmc:/3ds", 0777);
     mkdir(N3DS_DATA_DIR, 0777);
     chdir(N3DS_DATA_DIR);
+
+    // There is no /tmp for the few temporary files left (M_TempFile).
+    setenv("TMPDIR", N3DS_DATA_DIR, 1);
 
     // The startup messages (and errors) go to a log: there is no console.
     // Line buffered, so it survives a hang. The old log is blanked instead

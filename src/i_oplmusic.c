@@ -1641,6 +1641,39 @@ static void *I_OPL_RegisterSong(void *data, int len)
         return NULL;
     }
 
+#ifdef __3DS__
+    // Converted in memory and read from there: there is no /tmp.
+    if (IsMid(data, len))
+    {
+        result = MIDI_LoadMemory(data, len);
+    }
+    else
+    {
+        MEMFILE *instream = mem_fopen_read(data, len);
+        MEMFILE *outstream = mem_fopen_write();
+        void *outbuf;
+        size_t outbuf_len;
+
+        result = NULL;
+
+        if (mus2mid(instream, outstream) == 0)
+        {
+            mem_get_buf(outstream, &outbuf, &outbuf_len);
+            result = MIDI_LoadMemory(outbuf, outbuf_len);
+        }
+
+        mem_fclose(instream);
+        mem_fclose(outstream);
+    }
+
+    if (result == NULL)
+    {
+        fprintf(stderr, "I_OPL_RegisterSong: Failed to load MID.\n");
+    }
+
+    return result;
+#endif
+
     // MUS files begin with "MUS"
     // Reject anything which doesnt have this signature
 

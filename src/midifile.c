@@ -581,15 +581,15 @@ void MIDI_FreeFile(midi_file_t *file)
     free(file);
 }
 
-midi_file_t *MIDI_LoadFile(char *filename)
+static midi_file_t *LoadStream(FILE *stream)
 {
     midi_file_t *file;
-    FILE *stream;
 
     file = malloc(sizeof(midi_file_t));
 
     if (file == NULL)
     {
+        fclose(stream);
         return NULL;
     }
 
@@ -597,17 +597,6 @@ midi_file_t *MIDI_LoadFile(char *filename)
     file->num_tracks = 0;
     file->buffer = NULL;
     file->buffer_size = 0;
-
-    // Open file
-
-    stream = M_fopen(filename, "rb");
-
-    if (stream == NULL)
-    {
-        fprintf(stderr, "MIDI_LoadFile: Failed to open '%s'\n", filename);
-        MIDI_FreeFile(file);
-        return NULL;
-    }
 
     // Read MIDI file header
 
@@ -631,6 +620,40 @@ midi_file_t *MIDI_LoadFile(char *filename)
 
     return file;
 }
+
+midi_file_t *MIDI_LoadFile(char *filename)
+{
+    FILE *stream;
+
+    // Open file
+
+    stream = M_fopen(filename, "rb");
+
+    if (stream == NULL)
+    {
+        fprintf(stderr, "MIDI_LoadFile: Failed to open '%s'\n", filename);
+        return NULL;
+    }
+
+    return LoadStream(stream);
+}
+
+#ifdef __3DS__
+// From memory: the 3DS has no temporary folder, and writing a new file on
+// its SD card can take seconds.
+midi_file_t *MIDI_LoadMemory(void *data, size_t size)
+{
+    FILE *stream = fmemopen(data, size, "rb");
+
+    if (stream == NULL)
+    {
+        fprintf(stderr, "MIDI_LoadMemory: Failed to open the song\n");
+        return NULL;
+    }
+
+    return LoadStream(stream);
+}
+#endif
 
 // Get the number of tracks in a MIDI file.
 

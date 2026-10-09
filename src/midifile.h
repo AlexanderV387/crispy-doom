@@ -187,6 +187,9 @@ typedef struct
 // Load a MIDI file.
 
 midi_file_t *MIDI_LoadFile(char *filename);
+#ifdef __3DS__
+midi_file_t *MIDI_LoadMemory(void *data, size_t size);
+#endif
 
 // Free a MIDI file.
 
