@@ -1002,6 +1002,20 @@ static void LoadSubstituteConfigs(void)
 
     old_music_len = subst_music_len;
 
+#ifdef __3DS__
+    // [3DS] Looking for each known file name (with each extension) took 1.5
+    // seconds on the SD card: only when the folder has any file at all.
+    glob = I_StartGlob(musicdir, "*", 0);
+    path = I_NextGlob(glob);
+    I_EndGlob(glob);
+
+    if (path == NULL)
+    {
+        free(musicdir);
+        return;
+    }
+#endif
+
     // Add entries from known filenames list. We add this after those from the
     // configuration files, so that the entries here can be overridden.
     for (i = 0; i < arrlen(known_filenames); ++i)
