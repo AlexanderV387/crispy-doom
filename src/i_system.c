@@ -50,7 +50,13 @@
 #include "z_zone.h"
 #include "n3ds.h"
 
+#ifdef __3DS__
+// The WADs are read into memory (w_file_stdc.c), and more zones are
+// allocated when needed: a smaller first zone leaves memory for them.
+#define DEFAULT_RAM 16 /* MiB */
+#else
 #define DEFAULT_RAM 16*2 /* MiB [crispy] */
+#endif
 #define MIN_RAM     4*4  /* MiB [crispy] */
 
 

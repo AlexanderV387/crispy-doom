@@ -17,6 +17,8 @@
 //
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "m_misc.h"
 #include "w_file.h"
@@ -26,6 +28,9 @@ typedef struct
 {
     wad_file_t wad;
     FILE *fstream;
+#ifdef __3DS__
+    byte *data; // the whole file, or NULL
+#endif
 } stdc_wad_file_t;
 
 
@@ -50,6 +55,35 @@ static wad_file_t *W_StdC_OpenFile(const char *path)
     result->wad.path = M_StringDuplicate(path);
     result->fstream = fstream;
 
+#ifdef __3DS__
+    // [3DS] The whole file is read into memory at once and the lumps are
+    // copied from there: reading hundreds of small lumps from the SD card
+    // made the startup take seconds. (Not used in place as a mapped file:
+    // lumps are not aligned, and ARM faults on some unaligned loads.) Only
+    // while enough memory stays free; otherwise they are read from the file.
+    {
+        byte *data = malloc(result->wad.length);
+        void *headroom = malloc(8 * 1024 * 1024);
+
+        result->data = NULL;
+
+        if (data != NULL && headroom != NULL)
+        {
+            setvbuf(fstream, NULL, _IONBF, 0);
+
+            if (fread(data, 1, result->wad.length, fstream) == result->wad.length)
+            {
+                result->data = data;
+                data = NULL;
+            }
+        }
+
+        free(headroom);
+        free(data);
+        printf(" %s %s\n", path, result->data != NULL ? "read into memory" : "read from the SD card");
+    }
+#endif
+
     return &result->wad;
 }
 
@@ -59,6 +93,9 @@ static void W_StdC_CloseFile(wad_file_t *wad)
 
     stdc_wad = (stdc_wad_file_t *) wad;
 
+#ifdef __3DS__
+    free(stdc_wad->data);
+#endif
     fclose(stdc_wad->fstream);
     Z_Free(stdc_wad);
 }
@@ -73,6 +110,24 @@ size_t W_StdC_Read(wad_file_t *wad, unsigned int offset,
     size_t result;
 
     stdc_wad = (stdc_wad_file_t *) wad;
+
+#ifdef __3DS__
+    if (stdc_wad->data != NULL)
+    {
+        if (offset >= wad->length)
+        {
+            return 0;
+        }
+
+        if (buffer_len > wad->length - offset)
+        {
+            buffer_len = wad->length - offset;
+        }
+
+        memcpy(buffer, stdc_wad->data + offset, buffer_len);
+        return buffer_len;
+    }
+#endif
 
     // Jump to the specified position in the file.
 
