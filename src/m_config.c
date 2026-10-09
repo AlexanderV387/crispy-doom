@@ -38,6 +38,7 @@
 #include "m_misc.h"
 
 #include "z_zone.h"
+#include "n3ds.h"
 
 //
 // DEFAULTS
@@ -2722,7 +2723,11 @@ static void SaveDefaultCollection(default_collection_t *collection)
     int i, v;
     FILE *f;
 	
+#ifdef __3DS__
+    f = N3DS_OpenRewrite(collection->filename);
+#else
     f = M_fopen(collection->filename, "w");
+#endif
     if (!f)
 	return; // can't write the file, but don't complain
 
@@ -2816,7 +2821,11 @@ static void SaveDefaultCollection(default_collection_t *collection)
         fprintf(f, "\n");
     }
 
+#ifdef __3DS__
+    N3DS_CloseRewrite(f);
+#else
     fclose (f);
+#endif
 }
 
 // Parses integer values in the configuration file

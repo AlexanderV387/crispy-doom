@@ -41,20 +41,123 @@ void N3DS_Init(void)
     chdir(N3DS_DATA_DIR);
 
     // The startup messages (and errors) go to a log: there is no console.
-    // Line buffered, so it survives a hang.
-    // Both in append mode, so their lines do not overwrite each other.
-    if (freopen(N3DS_DATA_DIR "crispy-doom-log.txt", "w", stdout) != NULL
-        && freopen(N3DS_DATA_DIR "crispy-doom-log.txt", "a", stdout) != NULL)
+    // Line buffered, so it survives a hang. The old log is blanked instead
+    // of emptied (see N3DS_OpenRewrite) and written over from the start;
+    // stderr is the same stream (threads inherit it), so their lines do not
+    // overwrite each other.
     {
-        setvbuf(stdout, NULL, _IOLBF, 0);
-        freopen(N3DS_DATA_DIR "crispy-doom-log.txt", "a", stderr);
-        setvbuf(stderr, NULL, _IOLBF, 0);
+        const char *path = N3DS_DATA_DIR "crispy-doom-log.txt";
+        FILE *log = fopen(path, "r+b");
+
+        if (log != NULL)
+        {
+            long size;
+
+            fseek(log, 0, SEEK_END);
+            size = ftell(log);
+            rewind(log);
+
+            while (size-- > 0)
+            {
+                fputc(size % 64 == 0 ? '\n' : ' ', log);
+            }
+
+            fclose(log);
+        }
+
+        if (freopen(path, log != NULL ? "r+" : "w", stdout) != NULL)
+        {
+            setvbuf(stdout, NULL, _IOLBF, 0);
+            stderr = stdout;
+        }
     }
 }
 
 boolean N3DS_IsClosing(void)
 {
     return aptShouldClose();
+}
+
+// ==========================================================================
+// Frame counter on the bottom screen (320x240, rotated like the top one):
+// frames per second, small, in the top right corner. For the tests; it will
+// become an option (off by default), next to the map.
+
+#define BOTTOM_WIDTH 320
+
+static void FillBottom(u32 *framebuffer, int x, int y, int w, int h, u32 color)
+{
+    int i, j;
+
+    for (i = x; i < x + w; ++i)
+    {
+        for (j = y; j < y + h; ++j)
+        {
+            framebuffer[i * TOP_HEIGHT + (TOP_HEIGHT - 1 - j)] = color;
+        }
+    }
+}
+
+// 3x5 digits, as in the n3ds-ports hello world.
+static void DrawNumber(u32 *framebuffer, int number, int x, int y, int scale,
+                       u32 color)
+{
+    static const byte digits[10][5] =
+    {
+        {7, 5, 5, 5, 7}, {2, 6, 2, 2, 7}, {7, 1, 7, 4, 7}, {7, 1, 7, 1, 7},
+        {5, 5, 7, 1, 1}, {7, 4, 7, 1, 7}, {7, 4, 7, 5, 7}, {7, 1, 1, 1, 1},
+        {7, 5, 7, 5, 7}, {7, 5, 7, 1, 7},
+    };
+    char text[12];
+    int i, row, col;
+
+    snprintf(text, sizeof(text), "%d", number);
+
+    for (i = 0; text[i] != '\0'; ++i)
+    {
+        for (row = 0; row < 5; ++row)
+        {
+            for (col = 0; col < 3; ++col)
+            {
+                if (digits[text[i] - '0'][row] & (4 >> col))
+                {
+                    FillBottom(framebuffer, x + (i * 4 + col) * scale,
+                               y + row * scale, scale, scale, color);
+                }
+            }
+        }
+    }
+}
+
+static void DrawFrameCounter(void)
+{
+    static int frames = 0, fps = 0, buffers_drawn = 0;
+    static u64 start = 0;
+    const u64 now = osGetTime();
+    u32 *framebuffer;
+
+    ++frames;
+
+    if (now - start >= 1000)
+    {
+        fps = (int) (frames * 1000 / (now - start));
+        frames = 0;
+        start = now;
+        buffers_drawn = 0;
+    }
+
+    // Both buffers of the bottom screen, once per second.
+    if (buffers_drawn >= 2)
+    {
+        return;
+    }
+
+    framebuffer = (u32 *) gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
+    FillBottom(framebuffer, BOTTOM_WIDTH - 34, 2, 32, 14, 0x000000FF);
+    DrawNumber(framebuffer, fps, BOTTOM_WIDTH - 31, 4, 2, 0xFFFFFFFF);
+    GSPGPU_FlushDataCache(framebuffer, BOTTOM_WIDTH * TOP_HEIGHT * sizeof(u32));
+    gfxScreenSwapBuffers(GFX_BOTTOM, false);
+    ++buffers_drawn;
 }
 
 // Palette in the framebuffer format (RGBA8: 0xRRGGBBAA).
@@ -130,6 +233,7 @@ void N3DS_Present(const pixel_t *buffer, int width, int height,
 
     GSPGPU_FlushDataCache(framebuffer, TOP_WIDTH * TOP_HEIGHT * sizeof(u32));
     gfxScreenSwapBuffers(GFX_TOP, false);
+    DrawFrameCounter();
     gspWaitForVBlank();
 
     // In the log: the first frames reach the screen.
@@ -141,6 +245,25 @@ void N3DS_Present(const pixel_t *buffer, int width, int height,
             printf("N3DS_Present: frame %d (%dx%d)\n", frames, width, height);
         }
     }
+}
+
+FILE *N3DS_OpenRewrite(const char *path)
+{
+    FILE *file = fopen(path, "r+b");
+
+    return file != NULL ? file : fopen(path, "wb");
+}
+
+void N3DS_CloseRewrite(FILE *file)
+{
+    fflush(file);
+
+    if (ftruncate(fileno(file), ftell(file)) != 0)
+    {
+        // Complete anyway; only an old longer tail stays.
+    }
+
+    fclose(file);
 }
 
 void N3DS_ShowError(const char *message)

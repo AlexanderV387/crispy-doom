@@ -20,6 +20,8 @@
 
 #ifdef __3DS__
 
+#include <stdio.h>
+
 #include "SDL.h"
 #include "doomtype.h"
 
@@ -39,6 +41,13 @@ void N3DS_Present(const pixel_t *buffer, int width, int height,
 
 // The HOME Menu is closing the game: only quit, as soon as possible.
 boolean N3DS_IsClosing(void);
+
+// Opens a file to write it again from the start, over its old contents:
+// on the SD card, writing a new or emptied file sometimes takes seconds (8
+// on a large card) while space is found for it. N3DS_CloseRewrite cuts it
+// to what was written.
+FILE *N3DS_OpenRewrite(const char *path);
+void N3DS_CloseRewrite(FILE *file);
 
 // Shows a fatal error on the top screen until START is pressed: the 3DS has
 // no message boxes, so without it the game would just close.

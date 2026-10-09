@@ -32,6 +32,10 @@
 #include "m_config.h"
 #include "m_fixed.h"
 #include "m_misc.h"
+#ifdef __3DS__
+#include "crispy.h"
+#include "doomkeys.h"
+#endif
 
 static SDL_GameController *gamepad = NULL;
 static SDL_Joystick *joystick = NULL;
@@ -465,6 +469,131 @@ void I_UpdateGamepad(void)
     }
 }
 
+#ifdef __3DS__
+// The 3DS buttons and sticks, read directly with libctru (SDL's event pump
+// calls hidScanInput), as SDL game controller state: the bindings (joyb*)
+// and the axes use its numbering. ZL runs like B and ZR fires like R. The
+// D-pad is the arrow keys, which move in the game and in the menus.
+
+#include <3ds.h>
+
+static int N3DS_AxisValue(int value)
+{
+    // The Circle Pad and the C-stick reach about 150 at the edge.
+    value = value * 32767 / 150;
+    return BETWEEN(-32767, 32767, value);
+}
+
+static void N3DS_UpdateArrowKeys(u32 held)
+{
+    static u32 last_held = 0;
+    static const struct { u32 key; int doomkey; } arrows[] =
+    {
+        { KEY_DUP, KEY_UPARROW },
+        { KEY_DDOWN, KEY_DOWNARROW },
+        { KEY_DLEFT, KEY_LEFTARROW },
+        { KEY_DRIGHT, KEY_RIGHTARROW },
+    };
+    int i;
+
+    for (i = 0; i < arrlen(arrows); ++i)
+    {
+        const u32 key = arrows[i].key;
+
+        if ((held & key) != (last_held & key))
+        {
+            event_t ev;
+
+            ev.type = (held & key) != 0 ? ev_keydown : ev_keyup;
+            ev.data1 = arrows[i].doomkey;
+            ev.data2 = 0;
+            ev.data3 = 0;
+            D_PostEvent(&ev);
+        }
+    }
+
+    last_held = held;
+}
+
+static void N3DS_UpdateJoystick(void)
+{
+    static const struct { u32 key; int button; } buttons[] =
+    {
+        { KEY_A, SDL_CONTROLLER_BUTTON_A },
+        { KEY_B, SDL_CONTROLLER_BUTTON_B },
+        { KEY_X, SDL_CONTROLLER_BUTTON_X },
+        { KEY_Y, SDL_CONTROLLER_BUTTON_Y },
+        { KEY_SELECT, SDL_CONTROLLER_BUTTON_BACK },
+        { KEY_START, SDL_CONTROLLER_BUTTON_START },
+        { KEY_L, SDL_CONTROLLER_BUTTON_LEFTSHOULDER },
+        { KEY_R, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER },
+        { KEY_ZL, SDL_CONTROLLER_BUTTON_B },
+        { KEY_ZR, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER },
+    };
+    const u32 held = hidKeysHeld();
+    circlePosition circle_pad, c_stick;
+    int axis_values[SDL_CONTROLLER_AXIS_MAX] = {0};
+    event_t ev;
+    int i;
+
+    N3DS_UpdateArrowKeys(held);
+
+    hidCircleRead(&circle_pad);
+    hidCstickRead(&c_stick);
+
+    // Up is positive on the 3DS and negative for SDL.
+    axis_values[SDL_CONTROLLER_AXIS_LEFTX] = N3DS_AxisValue(circle_pad.dx);
+    axis_values[SDL_CONTROLLER_AXIS_LEFTY] = N3DS_AxisValue(-circle_pad.dy);
+    axis_values[SDL_CONTROLLER_AXIS_RIGHTX] = N3DS_AxisValue(c_stick.dx);
+    axis_values[SDL_CONTROLLER_AXIS_RIGHTY] = N3DS_AxisValue(-c_stick.dy);
+
+    ev.type = ev_joystick;
+    ev.data1 = 0;
+
+    for (i = 0; i < arrlen(buttons); ++i)
+    {
+        if ((held & buttons[i].key) != 0)
+        {
+            ev.data1 |= 1 << buttons[i].button;
+        }
+    }
+
+    ev.data2 = GetAxisStateGamepad(axis_values, joystick_x_axis,
+                                   joystick_x_invert, joystick_x_dead_zone);
+    ev.data3 = GetAxisStateGamepad(axis_values, joystick_y_axis,
+                                   joystick_y_invert, joystick_y_dead_zone);
+    ev.data4 = GetAxisStateGamepad(axis_values, joystick_strafe_axis,
+                                   joystick_strafe_invert,
+                                   joystick_strafe_dead_zone);
+    ev.data5 = GetAxisStateGamepad(axis_values, joystick_look_axis,
+                                   joystick_look_invert,
+                                   joystick_look_dead_zone);
+
+    // Menu directions from the Circle Pad only: the D-pad sends arrow keys.
+    ev.data6 = 0;
+
+    if (axis_values[SDL_CONTROLLER_AXIS_LEFTY] < -DIRECTION_DEADZONE)
+    {
+        ev.data6 |= JOY_DIR_UP << LSTICK_SHIFT;
+    }
+    else if (axis_values[SDL_CONTROLLER_AXIS_LEFTY] > DIRECTION_DEADZONE)
+    {
+        ev.data6 |= JOY_DIR_DOWN << LSTICK_SHIFT;
+    }
+
+    if (axis_values[SDL_CONTROLLER_AXIS_LEFTX] < -DIRECTION_DEADZONE)
+    {
+        ev.data6 |= JOY_DIR_LEFT << LSTICK_SHIFT;
+    }
+    else if (axis_values[SDL_CONTROLLER_AXIS_LEFTX] > DIRECTION_DEADZONE)
+    {
+        ev.data6 |= JOY_DIR_RIGHT << LSTICK_SHIFT;
+    }
+
+    D_PostEvent(&ev);
+}
+#endif
+
 void I_ShutdownJoystick(void)
 {
     if (joystick != NULL)
@@ -536,6 +665,10 @@ static int DeviceIndex(void)
 void I_InitJoystick(void)
 {
     int index;
+
+#ifdef __3DS__
+    return; // read with libctru (N3DS_UpdateJoystick)
+#endif
 
     if (!usejoystick || !strcmp(joystick_guid, ""))
     {
@@ -786,6 +919,11 @@ static int GetDirectionalInput(int x, int y)
 
 void I_UpdateJoystick(void)
 {
+#ifdef __3DS__
+    N3DS_UpdateJoystick();
+    return;
+#endif
+
     if (use_gamepad)
     {
         I_UpdateGamepad();
