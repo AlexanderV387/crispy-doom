@@ -116,6 +116,25 @@ static byte *AutoAllocMemory(int *size, int default_ram, int min_ram)
         // Failed to allocate?  Reduce zone size until we reach a size
         // that is acceptable.
 
+#ifdef __3DS__
+        // The zone takes the largest block it can; leave room for SDL, the
+        // sound and the rest of the game outside it.
+        if (zonemem != NULL)
+        {
+            void *headroom = malloc(16 * 1024 * 1024);
+
+            if (headroom == NULL)
+            {
+                free(zonemem);
+                zonemem = NULL;
+            }
+            else
+            {
+                free(headroom);
+            }
+        }
+#endif
+
         if (zonemem == NULL)
         {
             default_ram -= 1;

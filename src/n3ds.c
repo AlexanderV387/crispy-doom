@@ -39,6 +39,15 @@ void N3DS_Init(void)
     mkdir("sdmc:/3ds", 0777);
     mkdir(N3DS_DATA_DIR, 0777);
     chdir(N3DS_DATA_DIR);
+
+    // The startup messages (and errors) go to a log: there is no console.
+    // Line buffered, so it survives a hang.
+    if (freopen(N3DS_DATA_DIR "crispy-doom-log.txt", "w", stdout) != NULL)
+    {
+        setvbuf(stdout, NULL, _IOLBF, 0);
+        freopen(N3DS_DATA_DIR "crispy-doom-log.txt", "a", stderr);
+        setvbuf(stderr, NULL, _IOLBF, 0);
+    }
 }
 
 boolean N3DS_IsClosing(void)
@@ -120,6 +129,16 @@ void N3DS_Present(const pixel_t *buffer, int width, int height,
     GSPGPU_FlushDataCache(framebuffer, TOP_WIDTH * TOP_HEIGHT * sizeof(u32));
     gfxScreenSwapBuffers(GFX_TOP, false);
     gspWaitForVBlank();
+
+    // In the log: the first frames reach the screen.
+    {
+        static int frames = 0;
+
+        if (++frames == 1 || frames == 300)
+        {
+            printf("N3DS_Present: frame %d (%dx%d)\n", frames, width, height);
+        }
+    }
 }
 
 void N3DS_ShowError(const char *message)
