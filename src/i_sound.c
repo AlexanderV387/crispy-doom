@@ -26,6 +26,9 @@
 #include "i_video.h"
 #include "m_argv.h"
 #include "m_config.h"
+#ifdef __3DS__
+#include "n3ds.h"
+#endif
 
 #ifndef DISABLE_SDL2MIXER
 
@@ -248,11 +251,9 @@ void I_InitSound(GameMission_t mission)
 
 #ifdef __3DS__
     // Tests saved 22050 Hz in the configuration: the OPL music sounded
-    // coarse. The audio thread has the third core to itself.
-    if (snd_samplerate < 44100)
-    {
-        snd_samplerate = 44100;
-    }
+    // coarse. The audio thread has the third core to itself. The Old 3DS
+    // has no third core and a third of the speed: half the work.
+    snd_samplerate = N3DS_IsNew3DS() ? 44100 : 22050;
 #endif
 
     // Initialize the sound and music subsystems.

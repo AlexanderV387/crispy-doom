@@ -1855,7 +1855,11 @@ static void M_DrawCrispness1(void)
     M_DrawCrispnessHeader("Crispness 1/4");
 
     M_DrawCrispnessSeparator(crispness_sep_rendering, "Rendering");
+#ifdef __3DS__
+    M_DrawCrispnessItem(crispness_hires, "High Resolution Rendering", crispy->hires, N3DS_IsNew3DS());
+#else
     M_DrawCrispnessItem(crispness_hires, "High Resolution Rendering", crispy->hires, true);
+#endif
 #ifdef __3DS__
     // [3DS] The top screen sets the aspect ratio, the frame rate follows
     // it, and the smooth scaling is on the Nintendo 3DS page.

@@ -129,6 +129,22 @@ void N3DS_Init(void)
     }
 }
 
+boolean N3DS_IsNew3DS(void)
+{
+    static int is_new = -1;
+
+    if (is_new < 0)
+    {
+        bool result = false;
+
+        APT_CheckNew3DS(&result);
+        is_new = result;
+        printf("N3DS: %s 3DS\n", is_new ? "New" : "Old");
+    }
+
+    return is_new;
+}
+
 boolean N3DS_IsClosing(void)
 {
     return aptShouldClose();
@@ -635,7 +651,8 @@ static void PresentThread(void *arg)
 }
 
 // On the system core (1), which the game may use up to 80% of the time;
-// without it, everything stays on the game's core.
+// without it, everything stays on the game's core. Not on the Old 3DS: its
+// system core already has the audio thread (no third core).
 static void StartPresenting(void)
 {
     s32 priority = 0x30;
@@ -643,6 +660,12 @@ static void StartPresenting(void)
     LightEvent_Init(&frame_ready, RESET_ONESHOT);
     LightEvent_Init(&frame_done, RESET_STICKY);
     LightEvent_Signal(&frame_done);
+
+    if (!N3DS_IsNew3DS())
+    {
+        printf("N3DS_Present: composing the screens on the game's core\n");
+        return;
+    }
 
     svcGetThreadPriority(&priority, CUR_THREAD_HANDLE);
     APT_SetAppCpuTimeLimit(80);

@@ -40,6 +40,9 @@ void N3DS_Init(void);
 void N3DS_Present(const pixel_t *buffer, int width, int height,
                   const SDL_Color *palette, boolean palette_changed);
 
+// New 3DS (804 MHz, the third core) or Old 3DS (268 MHz, two cores).
+boolean N3DS_IsNew3DS(void);
+
 // Stops the thread that composes the screens (before SDL closes them).
 void N3DS_StopPresenting(void);
 

@@ -28,6 +28,10 @@
 
 #include "m_crispy.h"
 
+#ifdef __3DS__
+#include "n3ds.h"
+#endif
+
 multiitem_t multiitem_bobfactor[NUM_BOBFACTORS] =
 {
     {BOBFACTOR_FULL, "full"},
@@ -431,6 +435,14 @@ static void M_CrispyToggleHiresHook (void)
 void M_CrispyToggleHires(int choice)
 {
     choice = 0;
+
+#ifdef __3DS__
+    // [3DS] Too slow on the Old 3DS (30 FPS on the New 3DS).
+    if (!N3DS_IsNew3DS())
+    {
+        return;
+    }
+#endif
 
     crispy->post_rendering_hook = M_CrispyToggleHiresHook;
 }
