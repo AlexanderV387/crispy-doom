@@ -314,7 +314,7 @@ if(NINTENDO_3DS)
         NAME "Crispy Strife"
         DESCRIPTION "Strife: Quest for the Sigil"
         AUTHOR "AlexanderV387, Fabian Greffrath"
-        ICON "${PROJECT_SOURCE_DIR}/assets/icon.png"
+        ICON "${PROJECT_SOURCE_DIR}/assets/strife/icon.png"
     )
     ctr_create_3dsx("${PROGRAM_PREFIX}strife"
         SMDH "${CMAKE_CURRENT_BINARY_DIR}/crispy-strife.smdh"
