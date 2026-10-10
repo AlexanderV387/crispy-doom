@@ -31,5 +31,10 @@ Mods (`.wad`, `.deh`, `.bex`) go in `/3ds/crispy-doom/mods/`. With more than one
 - **Nintendo 3DS options** (Options → Crispness, first page): automap, status bar position, frame counter, smooth scaling, controls.
 - Starts in about 1.3 seconds; the settings are saved when you press HOME, so closing from there is instant; saves never stall on the SD card.
 - Old 3DS: detected (no high resolution, music at 22050 Hz), but untested.
+- Measured on a New 3DS: Doom 57-60 FPS in the heaviest fights; Freedoom's more detailed maps dip to about 54. High resolution runs at 30 FPS.
+
+## Known issues
+
+- The `.cia` takes about 3 seconds to reach the title screen (the `.3dsx`, 1.3): some log lines wait on the SD card.
 
 Port by AlexanderV387 for [n3ds-ports](https://github.com/AlexanderV387/n3ds-ports). Crispy Doom by Fabian Greffrath and contributors, based on Chocolate Doom; GPL-2.0.
