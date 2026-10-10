@@ -25,6 +25,10 @@
 #include "doomtype.h"
 #include "d_event.h"
 #include "i_input.h"
+
+#ifdef __3DS__
+#include "n3ds.h"
+#endif
 #include "i_timer.h" // [crispy]
 #include "m_argv.h"
 #include "m_config.h"
@@ -300,8 +304,8 @@ void I_StartTextInput(int x1, int y1, int x2, int y2)
     text_input_enabled = true;
 
 #ifdef __3DS__
-    // [3DS] SDL's would open the system keyboard with no text to edit: the
-    // menus open it themselves (N3DS_InputText).
+    // [3DS] The keyboard on the bottom screen (SDL's opens the system's).
+    N3DS_ShowKeyboard(true);
     return;
 #endif
 
@@ -315,6 +319,11 @@ void I_StartTextInput(int x1, int y1, int x2, int y2)
 void I_StopTextInput(void)
 {
     text_input_enabled = false;
+
+#ifdef __3DS__
+    N3DS_ShowKeyboard(false);
+    return;
+#endif
 
     if (!vanilla_keyboard_mapping)
     {

@@ -18,6 +18,7 @@
 #ifdef __3DS__
 
 #include <ctype.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -29,6 +30,7 @@
 
 #include "crispy.h"
 #include "d_event.h"
+#include "doomkeys.h"
 #include "m_config.h"
 #include "m_misc.h"
 #include "n3ds.h"
@@ -323,20 +325,49 @@ boolean N3DS_GetTouch(int *x, int *y)
     return true;
 }
 
-static int reserved_x, reserved_y, reserved_w, reserved_h;
+static struct { int x, y, w, h; } reserved[4];
+static int num_reserved = 0;
+
+// The keyboard on the bottom screen is open (see N3DS_ShowKeyboard).
+static boolean keyboard_open = false;
+
+void N3DS_ClearReservedTouch(void)
+{
+    num_reserved = 0;
+}
 
 void N3DS_ReserveTouch(int x, int y, int w, int h)
 {
-    reserved_x = x;
-    reserved_y = y;
-    reserved_w = w;
-    reserved_h = h;
+    if (num_reserved < arrlen(reserved))
+    {
+        reserved[num_reserved].x = x;
+        reserved[num_reserved].y = y;
+        reserved[num_reserved].w = w;
+        reserved[num_reserved].h = h;
+        ++num_reserved;
+    }
 }
 
 boolean N3DS_TouchReserved(int x, int y)
 {
-    return x >= reserved_x && x < reserved_x + reserved_w
-        && y >= reserved_y && y < reserved_y + reserved_h;
+    int i;
+
+    // The keyboard takes the whole bottom screen.
+    if (keyboard_open)
+    {
+        return true;
+    }
+
+    for (i = 0; i < num_reserved; ++i)
+    {
+        if (x >= reserved[i].x && x < reserved[i].x + reserved[i].w
+         && y >= reserved[i].y && y < reserved[i].y + reserved[i].h)
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 // ==========================================================================
@@ -355,9 +386,6 @@ static void MapButtonRows(int map_y, int map_height, int *plus_y, int *minus_y)
     *plus_y = *minus_y - BUTTON_SIZE - 4;
 }
 
-// Tapped: the keyboard opens at the next frame (N3DS_Present).
-static boolean keyboard_requested = false;
-
 int N3DS_UpdateMapZoom(int map_y, int map_height)
 {
     static int held = 0;
@@ -372,7 +400,7 @@ int N3DS_UpdateMapZoom(int map_y, int map_height)
     if (touching && !was_touching && x < BUTTON_X + BUTTON_SIZE + 8
      && y >= map_y && y < map_y + BUTTON_X + BUTTON_SIZE + 4)
     {
-        keyboard_requested = true;
+        N3DS_ShowKeyboard(true);
     }
 
     was_touching = touching;
@@ -854,63 +882,226 @@ static void StartPresenting(void)
 }
 
 // ==========================================================================
-// The system's keyboard. It takes both screens, so the other core must not
-// be composing them meanwhile.
+// The keyboard on the bottom screen (the system's keyboard is an applet that
+// stops the game and leaves the screens in another mode). Each key reaches
+// the game as a key press, as on a PC keyboard: names, cheats. It opens when
+// the game asks for text and with the map's keyboard button.
 
-static boolean InputText(const char *hint, char *text, int size)
+// Colors of the game's palette nearest to these, for the keyboard.
+static int ui_black, ui_gray, ui_white, ui_dark;
+
+void N3DS_ShowKeyboard(boolean show)
 {
-    SwkbdState keyboard;
-    char buffer[64];
-
-    swkbdInit(&keyboard, SWKBD_TYPE_NORMAL, 2, MIN(size, (int) sizeof(buffer)) - 1);
-    swkbdSetHintText(&keyboard, hint);
-    swkbdSetInitialText(&keyboard, text);
-    swkbdSetValidation(&keyboard, SWKBD_ANYTHING, 0, 0);
-
-    if (swkbdInputText(&keyboard, buffer, sizeof(buffer)) != SWKBD_BUTTON_CONFIRM)
-    {
-        return false;
-    }
-
-    M_StringCopy(text, buffer, size);
-    return true;
+    keyboard_open = show;
 }
 
-boolean N3DS_InputText(const char *hint, char *text, int size)
+// 5x7 letters: the rows' 5 low bits, the leftmost pixel the highest.
+static const struct { char ch; byte rows[7]; } font[] =
 {
-    if (present_thread != NULL)
-    {
-        LightEvent_Wait(&frame_done);
-    }
+    {'0', {0x0E,0x11,0x13,0x15,0x19,0x11,0x0E}}, {'1', {0x04,0x0C,0x04,0x04,0x04,0x04,0x0E}},
+    {'2', {0x0E,0x11,0x01,0x02,0x04,0x08,0x1F}}, {'3', {0x1F,0x02,0x04,0x02,0x01,0x11,0x0E}},
+    {'4', {0x02,0x06,0x0A,0x12,0x1F,0x02,0x02}}, {'5', {0x1F,0x10,0x1E,0x01,0x01,0x11,0x0E}},
+    {'6', {0x06,0x08,0x10,0x1E,0x11,0x11,0x0E}}, {'7', {0x1F,0x01,0x02,0x04,0x08,0x08,0x08}},
+    {'8', {0x0E,0x11,0x11,0x0E,0x11,0x11,0x0E}}, {'9', {0x0E,0x11,0x11,0x0F,0x01,0x02,0x0C}},
+    {'A', {0x0E,0x11,0x11,0x11,0x1F,0x11,0x11}}, {'B', {0x1E,0x11,0x11,0x1E,0x11,0x11,0x1E}},
+    {'C', {0x0E,0x11,0x10,0x10,0x10,0x11,0x0E}}, {'D', {0x1C,0x12,0x11,0x11,0x11,0x12,0x1C}},
+    {'E', {0x1F,0x10,0x10,0x1E,0x10,0x10,0x1F}}, {'F', {0x1F,0x10,0x10,0x1E,0x10,0x10,0x10}},
+    {'G', {0x0E,0x11,0x10,0x17,0x11,0x11,0x0F}}, {'H', {0x11,0x11,0x11,0x1F,0x11,0x11,0x11}},
+    {'I', {0x0E,0x04,0x04,0x04,0x04,0x04,0x0E}}, {'J', {0x07,0x02,0x02,0x02,0x02,0x12,0x0C}},
+    {'K', {0x11,0x12,0x14,0x18,0x14,0x12,0x11}}, {'L', {0x10,0x10,0x10,0x10,0x10,0x10,0x1F}},
+    {'M', {0x11,0x1B,0x15,0x15,0x11,0x11,0x11}}, {'N', {0x11,0x11,0x19,0x15,0x13,0x11,0x11}},
+    {'O', {0x0E,0x11,0x11,0x11,0x11,0x11,0x0E}}, {'P', {0x1E,0x11,0x11,0x1E,0x10,0x10,0x10}},
+    {'Q', {0x0E,0x11,0x11,0x11,0x15,0x12,0x0D}}, {'R', {0x1E,0x11,0x11,0x1E,0x14,0x12,0x11}},
+    {'S', {0x0F,0x10,0x10,0x0E,0x01,0x01,0x1E}}, {'T', {0x1F,0x04,0x04,0x04,0x04,0x04,0x04}},
+    {'U', {0x11,0x11,0x11,0x11,0x11,0x11,0x0E}}, {'V', {0x11,0x11,0x11,0x11,0x11,0x0A,0x04}},
+    {'W', {0x11,0x11,0x11,0x15,0x15,0x15,0x0A}}, {'X', {0x11,0x11,0x0A,0x04,0x0A,0x11,0x11}},
+    {'Y', {0x11,0x11,0x11,0x0A,0x04,0x04,0x04}}, {'Z', {0x1F,0x01,0x02,0x04,0x08,0x10,0x1F}},
+    {'-', {0x00,0x00,0x00,0x1F,0x00,0x00,0x00}}, {'.', {0x00,0x00,0x00,0x00,0x00,0x0C,0x0C}},
+    {'<', {0x02,0x04,0x08,0x10,0x08,0x04,0x02}},
+};
 
-    return InputText(hint, text, size);
+static void DrawChar(pixel_t *screen, int x, int y, char ch, int scale, int color)
+{
+    int i, row, col;
+
+    for (i = 0; i < arrlen(font); ++i)
+    {
+        if (font[i].ch == ch)
+        {
+            for (row = 0; row < 7; ++row)
+            {
+                for (col = 0; col < 5; ++col)
+                {
+                    if (font[i].rows[row] & (0x10 >> col))
+                    {
+                        FillRect(screen, x + col * scale, y + row * scale,
+                                 scale, scale, color);
+                    }
+                }
+            }
+            return;
+        }
+    }
 }
 
-// The keyboard button: what is typed reaches the game as key presses (the
-// cheats, for instance).
-static void TypeText(void)
+static void DrawText(pixel_t *screen, int x, int y, const char *text, int scale,
+                     int color)
 {
-    char text[32] = "";
-    int i;
-
-    if (!InputText("Type (cheats...)", text, sizeof(text)))
+    for (; *text != '\0'; ++text, x += 6 * scale)
     {
-        return;
+        DrawChar(screen, x, y, *text, scale, color);
+    }
+}
+
+#define KEY_W 28
+#define KEY_H 30
+#define KEY_PITCH_X 31
+#define KEY_PITCH_Y 34
+#define KEYS_X 6
+#define KEYS_Y 50
+
+typedef struct
+{
+    int x, y, w;        // in keys
+    int key;            // the key it presses, or 0 to close
+    const char *label;
+} vkey_t;
+
+static vkey_t vkeys[64];
+static int num_vkeys = 0;
+
+static void AddKey(int x, int y, int w, int key, const char *label)
+{
+    vkeys[num_vkeys].x = x;
+    vkeys[num_vkeys].y = y;
+    vkeys[num_vkeys].w = w;
+    vkeys[num_vkeys].key = key;
+    vkeys[num_vkeys].label = label;
+    ++num_vkeys;
+}
+
+static void SetUpKeys(void)
+{
+    static const char *const rows[] = {"1234567890", "QWERTYUIOP", "ASDFGHJKL-", "ZXCVBNM."};
+    static char labels[40][2];
+    int row, i, n = 0;
+
+    for (row = 0; row < arrlen(rows); ++row)
+    {
+        for (i = 0; rows[row][i] != '\0'; ++i, ++n)
+        {
+            labels[n][0] = rows[row][i];
+            labels[n][1] = '\0';
+            AddKey(i, row, 1, tolower((unsigned char) rows[row][i]), labels[n]);
+        }
     }
 
-    for (i = 0; text[i] != '\0'; ++i)
-    {
-        event_t ev;
-        const int ch = (unsigned char) text[i];
+    AddKey(8, 3, 2, KEY_BACKSPACE, "DEL");
+    AddKey(0, 4, 3, 0, "CLOSE");
+    AddKey(3, 4, 4, ' ', "SPACE");
+    AddKey(7, 4, 3, KEY_ENTER, "ENTER");
+}
 
-        ev.type = ev_keydown;
-        ev.data1 = tolower(ch);
-        ev.data2 = ch;
-        ev.data3 = ch;
-        D_PostEvent(&ev);
-        ev.type = ev_keyup;
-        D_PostEvent(&ev);
+static void KeyRect(const vkey_t *k, int *x, int *y, int *w)
+{
+    *x = KEYS_X + k->x * KEY_PITCH_X;
+    *y = KEYS_Y + k->y * KEY_PITCH_Y;
+    *w = k->w * KEY_PITCH_X - (KEY_PITCH_X - KEY_W);
+}
+
+static void DrawKeyboard(pixel_t *screen, int pressed)
+{
+    int i, x, y, w;
+
+    memset(screen, ui_black, N3DS_BOTTOM_WIDTH * N3DS_BOTTOM_HEIGHT * sizeof(*screen));
+    DrawText(screen, 10, 14, "KEYBOARD", 2, ui_gray);
+
+    for (i = 0; i < num_vkeys; ++i)
+    {
+        const vkey_t *k = &vkeys[i];
+        const int len = (int) strlen(k->label);
+        const int scale = len == 1 ? 2 : 1;
+
+        KeyRect(k, &x, &y, &w);
+        FillRect(screen, x, y, w, KEY_H, i == pressed ? ui_white : ui_gray);
+        FillRect(screen, x + 1, y + 1, w - 2, KEY_H - 2, i == pressed ? ui_gray : ui_dark);
+        DrawText(screen, x + (w - len * 6 * scale + scale) / 2,
+                 y + (KEY_H - 7 * scale) / 2, k->label, scale, ui_white);
     }
+}
+
+static void PostKey(int key)
+{
+    event_t ev;
+
+    ev.type = ev_keydown;
+    ev.data1 = key;
+    ev.data2 = key;
+    ev.data3 = key;
+    D_PostEvent(&ev);
+    ev.type = ev_keyup;
+    D_PostEvent(&ev);
+}
+
+// Taps on the keyboard, every frame (so none is missed). Returns the key
+// being pressed, or -1.
+static int UpdateKeyboard(void)
+{
+    static boolean was_touching = false;
+    static int pressed = -1;
+    int x, y, i, kx, ky, kw;
+    const boolean touching = N3DS_GetTouch(&x, &y);
+
+    if (touching && !was_touching)
+    {
+        pressed = -1;
+
+        for (i = 0; i < num_vkeys; ++i)
+        {
+            KeyRect(&vkeys[i], &kx, &ky, &kw);
+
+            if (x >= kx && x < kx + kw && y >= ky && y < ky + KEY_H)
+            {
+                pressed = i;
+
+                if (vkeys[i].key == 0)
+                {
+                    keyboard_open = false;
+                }
+                else
+                {
+                    PostKey(vkeys[i].key);
+                }
+                break;
+            }
+        }
+    }
+    else if (!touching)
+    {
+        pressed = -1;
+    }
+
+    was_touching = touching;
+    return pressed;
+}
+
+static int Nearest(const SDL_Color *palette, int r, int g, int b)
+{
+    int i, best = 0, best_distance = INT_MAX;
+
+    for (i = 0; i < 256; ++i)
+    {
+        const int dr = palette[i].r - r, dg = palette[i].g - g, db = palette[i].b - b;
+        const int distance = dr * dr + dg * dg + db * db;
+
+        if (distance < best_distance)
+        {
+            best = i;
+            best_distance = distance;
+        }
+    }
+
+    return best;
 }
 
 void N3DS_StopPresenting(void)
@@ -960,14 +1151,6 @@ void N3DS_Present(const pixel_t *buffer, int width, int height,
         work_start = svcGetSystemTick();
     }
 
-    // The other thread is idle until the next frame: the keyboard can take
-    // the screens.
-    if (keyboard_requested)
-    {
-        keyboard_requested = false;
-        TypeText();
-    }
-
     // The other thread is idle: the frame is free to fill.
     if (frame.top_size < width * height)
     {
@@ -988,12 +1171,34 @@ void N3DS_Present(const pixel_t *buffer, int width, int height,
                             | ((u32) palette[k].g << 16)
                             | ((u32) palette[k].b << 8) | 0xFF;
         }
+
+        ui_black = Nearest(palette, 0, 0, 0);
+        ui_dark = Nearest(palette, 48, 48, 48);
+        ui_gray = Nearest(palette, 128, 128, 128);
+        ui_white = Nearest(palette, 255, 255, 255);
     }
 
     // The bottom screen, 30 times per second: drawn here, with the game.
+    // The keyboard instead, when open; its taps are read every frame.
     frame.bottom = (++bottom_frames & 1) == 0;
 
-    if (frame.bottom)
+    if (keyboard_open)
+    {
+        const int pressed = UpdateKeyboard();
+
+        if (num_vkeys == 0)
+        {
+            SetUpKeys();
+        }
+
+        if (frame.bottom && keyboard_open)
+        {
+            DrawKeyboard(frame.bottom_screen, pressed);
+            showing = frame.bottom_showing = true;
+        }
+    }
+
+    if (frame.bottom && !keyboard_open)
     {
         showing = N3DS_DrawBottom != NULL && N3DS_DrawBottom(frame.bottom_screen);
         frame.bottom_showing = showing;

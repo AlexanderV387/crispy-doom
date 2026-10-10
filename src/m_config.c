@@ -3386,6 +3386,12 @@ void M_SetMusicPackDir(void)
     }
 
 #ifdef __3DS__
+    // [3DS] Not created: music packs need decoders the 3DS build leaves
+    // out, and a new folder and file took seconds each on the SD card.
+    return;
+#endif
+
+#ifdef __3DS__
     prefdir = SDL_strdup(N3DS_DATA_DIR); // [3DS] each game's own folder
 #else
     prefdir = SDL_GetPrefPath("", PACKAGE_TARNAME);

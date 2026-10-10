@@ -25,6 +25,7 @@
 #include "i_sound.h"
 #include "i_video.h"
 #include "m_argv.h"
+#include "crispy.h"
 #include "m_config.h"
 #ifdef __3DS__
 #include "n3ds.h"
@@ -245,6 +246,10 @@ void I_InitSound(GameMission_t mission)
     //
 
     nomusicpacks = M_ParmExists("-nomusicpacks");
+#ifdef __3DS__
+    // [3DS] Music packs need decoders the 3DS build leaves out.
+    nomusicpacks = true;
+#endif
 
     // Auto configure the music pack directory.
     M_SetMusicPackDir();
@@ -254,6 +259,10 @@ void I_InitSound(GameMission_t mission)
     // coarse. The audio thread has the third core to itself. The Old 3DS
     // has no third core and a third of the speed: half the work.
     snd_samplerate = N3DS_IsNew3DS() ? 44100 : 22050;
+
+    // The converted sounds are cached up to this size. 64 MB (the default)
+    // ran out of memory with Strife's voices, several MB each at 44.1 kHz.
+    snd_cachesize = MIN(snd_cachesize, 8 * 1024 * 1024);
 #endif
 
     // Initialize the sound and music subsystems.

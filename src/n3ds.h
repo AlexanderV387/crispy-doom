@@ -62,9 +62,9 @@ void N3DS_StopPresenting(void);
 // Returns false to quit.
 boolean N3DS_PickGame(int *argc, char ***argv);
 
-// The system's keyboard, with a hint and the text to edit (size bytes).
-// Returns false if cancelled.
-boolean N3DS_InputText(const char *hint, char *text, int size);
+// The keyboard on the bottom screen: its keys reach the game as key
+// presses. Opened when the game asks for text and with the map's button.
+void N3DS_ShowKeyboard(boolean show);
 
 // The HOME Menu is closing the game: only quit, as soon as possible.
 boolean N3DS_IsClosing(void);
@@ -94,8 +94,9 @@ void N3DS_BindVariables(void);
 // Where the bottom screen is being touched, if it is.
 boolean N3DS_GetTouch(int *x, int *y);
 
-// Touches starting here (the bottom screen's own buttons, set by the game
-// when it draws them; w = 0 for none) do not turn the view.
+// Touches starting in these rectangles (the bottom screen's own buttons,
+// set by the game each time it draws them) do not turn the view.
+void N3DS_ClearReservedTouch(void);
 void N3DS_ReserveTouch(int x, int y, int w, int h);
 boolean N3DS_TouchReserved(int x, int y);
 

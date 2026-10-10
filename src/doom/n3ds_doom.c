@@ -97,8 +97,8 @@ boolean N3DS_DoomDrawBottom(pixel_t *screen)
     const boolean map = n3ds_bottom_map != 0;
     const int map_height = N3DS_BOTTOM_HEIGHT - (bar ? ST_HEIGHT : 0);
 
-    // The zoom buttons set it again when the map is drawn.
-    N3DS_ReserveTouch(0, 0, 0, 0);
+    // The buttons set it again when they are drawn.
+    N3DS_ClearReservedTouch();
 
     if (gamestate != GS_LEVEL || !gametic || players[displayplayer].mo == NULL
      || (!bar && !map))

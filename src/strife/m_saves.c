@@ -49,12 +49,22 @@ char character_name[CHARACTER_NAME_LEN]; // Name of "character" for saveslot
 //
 // Clear the temporary save directory
 //
+// [3DS] Save slot folders are made when used (see M_CreateSaveDirs).
+void M_EnsureDir(const char *dir)
+{
+#ifdef __3DS__
+    M_MakeDirectory(dir);
+#endif
+}
+
 void ClearTmp(void)
 {
     glob_t *glob;
 
     if(savepathtemp == NULL)
         I_Error("you fucked up savedir man!");
+
+    M_EnsureDir(savepathtemp);
 
     glob = I_StartGlob(savepathtemp, "*", 0);
     if (glob == NULL)
@@ -86,6 +96,8 @@ void ClearSlot(void)
     if(savepath == NULL)
         I_Error("userdir is fucked up man!");
 
+    M_EnsureDir(savepath);
+
     glob = I_StartGlob(savepath, "*", 0);
     if (glob == NULL)
         I_Error("ClearSlot: Couldn't open dir %s", savepath);
@@ -113,6 +125,8 @@ void ClearSlot(void)
 void FromCurr(void)
 {
     glob_t *glob;
+
+    M_EnsureDir(savepath);
 
     glob = I_StartGlob(savepathtemp, "*", 0);
 
@@ -154,6 +168,7 @@ void ToCurr(void)
     glob_t *glob;
 
     ClearTmp();
+    M_EnsureDir(savepath);
 
     // BUG: Rogue copypasta'd this error message, which is why we don't know
     // the real original name of this function.
@@ -404,6 +419,13 @@ void M_CreateSaveDirs(const char *savedir)
     for(i = 0; i < 7; i++)
     {
         char *compositedir;
+
+#ifdef __3DS__
+        // [3DS] Only the temporary slot (6): a new folder takes seconds on
+        // the SD card. The others are made when saved to (M_EnsureDir).
+        if (i != 6)
+            continue;
+#endif
 
         // compose the full path by concatenating with savedir
         compositedir = M_SafeFilePath(savedir, M_MakeStrifeSaveDir(i, ""));

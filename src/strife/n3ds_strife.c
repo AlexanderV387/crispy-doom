@@ -26,7 +26,9 @@
 #include "am_map.h"
 #include "crispy.h"
 #include "doomstat.h"
+#include "d_event.h"
 #include "i_video.h"
+#include "m_controls.h"
 #include "m_menu.h"
 #include "n3ds.h"
 #include "n3ds_strife.h"
@@ -86,6 +88,66 @@ static void DrawStatusBar(pixel_t *screen, int y)
     }
 }
 
+static int touch_x, touch_y;
+
+static void PostInventoryKey(evtype_t type)
+{
+    event_t ev;
+
+    ev.type = type;
+    ev.data1 = key_invuse;
+    ev.data2 = 0;
+    ev.data3 = 0;
+    D_PostEvent(&ev);
+}
+
+// The inventory bar's six items (the bar's rows 8-39), as ST_doRefresh
+// draws them: a tap on an item chooses it, a tap on the chosen one uses it.
+#define ITEMS_X 42
+#define ITEM_W 35
+#define NUM_ITEM_SLOTS 6
+
+static void UpdateInventoryTouch(int bar_y)
+{
+    static boolean was_touching = false;
+    static int release_in = 0;
+    player_t *const player = &players[consoleplayer];
+    const boolean touching = N3DS_GetTouch(&touch_x, &touch_y);
+    int first, item;
+
+    N3DS_ReserveTouch(0, bar_y, N3DS_BOTTOM_WIDTH, BAR_HEIGHT);
+
+    // The use key is held a few bottom screen frames, for the game to see it.
+    if (release_in > 0 && --release_in == 0)
+    {
+        PostInventoryKey(ev_keyup);
+    }
+
+    if (touching && !was_touching && !menuactive
+     && touch_y >= bar_y + 8 && touch_y < bar_y + BAR_HEIGHT
+     && touch_x >= ITEMS_X && touch_x < ITEMS_X + ITEM_W * NUM_ITEM_SLOTS)
+    {
+        first = player->inventorycursor >= NUM_ITEM_SLOTS ?
+                player->inventorycursor - (NUM_ITEM_SLOTS - 1) : 0;
+        item = first + (touch_x - ITEMS_X) / ITEM_W;
+
+        if (item < player->numinventory)
+        {
+            if (item == player->inventorycursor)
+            {
+                PostInventoryKey(ev_keydown);
+                release_in = 3;
+            }
+            else
+            {
+                player->inventorycursor = item;
+            }
+        }
+    }
+
+    was_touching = touching;
+}
+
 // The map at row y, with its zoom buttons.
 static void DrawMap(pixel_t *screen, int y, int height)
 {
@@ -112,8 +174,8 @@ boolean N3DS_StrifeDrawBottom(pixel_t *screen)
     const boolean map = n3ds_bottom_map != 0;
     const int map_height = N3DS_BOTTOM_HEIGHT - (bar ? BAR_HEIGHT : 0);
 
-    // The zoom buttons set it again when the map is drawn.
-    N3DS_ReserveTouch(0, 0, 0, 0);
+    // The buttons set it again when they are drawn.
+    N3DS_ClearReservedTouch();
 
     if (gamestate != GS_LEVEL || !gametic || players[displayplayer].mo == NULL
      || (!bar && !map))
@@ -126,17 +188,20 @@ boolean N3DS_StrifeDrawBottom(pixel_t *screen)
         // Top, middle or bottom of the screen.
         memset(screen, 0, N3DS_BOTTOM_WIDTH * N3DS_BOTTOM_HEIGHT * sizeof(*screen));
         DrawStatusBar(screen, n3ds_hud_position * (N3DS_BOTTOM_HEIGHT - BAR_HEIGHT) / 2);
+        UpdateInventoryTouch(n3ds_hud_position * (N3DS_BOTTOM_HEIGHT - BAR_HEIGHT) / 2);
     }
     else if (bar && n3ds_hud_position == 2)
     {
         DrawMap(screen, 0, map_height);
         DrawStatusBar(screen, map_height);
+        UpdateInventoryTouch(map_height);
     }
     else
     {
         if (bar)
         {
             DrawStatusBar(screen, 0);
+            UpdateInventoryTouch(0);
         }
 
         DrawMap(screen, N3DS_BOTTOM_HEIGHT - map_height, map_height);

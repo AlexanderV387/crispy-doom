@@ -2216,6 +2216,7 @@ void G_DoSaveGame (char *path)
     char gamemapstr[33];
 
     temp_savegame_file = P_TempSaveGameFile();
+    M_EnsureDir(path);
     
     // [STRIFE] custom save file path logic
     memset(gamemapstr, 0, sizeof(gamemapstr));
