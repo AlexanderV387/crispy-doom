@@ -141,6 +141,7 @@ int n3ds_bottom_map = 1;
 int n3ds_hud_position = 0;
 int n3ds_smooth_scaling = 1;
 int n3ds_show_fps = 0;
+int n3ds_map_zoom = 150;
 int n3ds_config_version = 0;
 
 void N3DS_BindVariables(void)
@@ -149,6 +150,7 @@ void N3DS_BindVariables(void)
     M_BindIntVariable("n3ds_hud_position",   &n3ds_hud_position);
     M_BindIntVariable("n3ds_smooth_scaling", &n3ds_smooth_scaling);
     M_BindIntVariable("n3ds_show_fps",       &n3ds_show_fps);
+    M_BindIntVariable("n3ds_map_zoom",       &n3ds_map_zoom);
     M_BindIntVariable("n3ds_config_version", &n3ds_config_version);
 }
 
@@ -253,16 +255,26 @@ static void UpdateBottomBacklight(boolean showing)
     was_touching = touching;
 }
 
+boolean N3DS_GetTouch(int *x, int *y)
+{
+    touchPosition touch;
+
+    if ((hidKeysHeld() & KEY_TOUCH) == 0)
+    {
+        return false;
+    }
+
+    hidTouchRead(&touch);
+    *x = touch.px;
+    *y = touch.py;
+    return true;
+}
+
 // ==========================================================================
 // Bottom screen (320x240, rotated like the top one): what the game draws
 // (status bar, map), 30 times per second, and the frame counter.
 
 boolean (*N3DS_DrawBottom)(pixel_t *screen);
-
-static pixel_t bottom_screen[N3DS_BOTTOM_WIDTH * N3DS_BOTTOM_HEIGHT];
-
-// Palette in the framebuffer format (RGBA8: 0xRRGGBBAA).
-static u32 colors[256];
 
 static void FillBottom(u32 *framebuffer, int x, int y, int w, int h, u32 color)
 {
@@ -308,148 +320,99 @@ static void DrawNumber(u32 *framebuffer, int number, int x, int y, int scale,
     }
 }
 
-// Frames per second, and the frame's time without the vertical blank wait
-// (the game and composing the frame): how much of the 16.7 ms of a 60 FPS
-// frame is used. Averaged over each second.
-static int counter_fps, counter_work_ms;
+// Frames per second, the game's time per frame without waiting for the
+// screen (how much of the 16.7 ms of a 60 FPS frame it uses), and the time
+// composing the screens on the other core. Averaged over each second.
+static int counter_fps, counter_work_ms, counter_compose_ms;
 
-static void CountFrame(int work_us)
+static void CountFrame(int work_us, int compose_us)
 {
     static int frames = 0;
-    static u64 start = 0, work_total = 0;
+    static u64 start = 0, work_total = 0, compose_total = 0;
     const u64 now = osGetTime();
 
     ++frames;
     work_total += work_us;
+    compose_total += compose_us;
 
     if (now - start >= 1000)
     {
         counter_fps = (int) (frames * 1000 / (now - start));
         counter_work_ms = (int) ((work_total / frames + 500) / 1000);
+        counter_compose_ms = (int) ((compose_total / frames + 500) / 1000);
         frames = 0;
         work_total = 0;
+        compose_total = 0;
         start = now;
     }
 }
 
 // In a corner of the map, away from the status bar: frames per second
-// (white) and milliseconds of work per frame (green).
+// (white), milliseconds of the game per frame (green) and of composing the
+// screens (yellow).
 static void DrawFrameCounter(u32 *framebuffer)
 {
     const int y = n3ds_hud_position == 0 ? N3DS_BOTTOM_HEIGHT - 16 : 2;
 
-    FillBottom(framebuffer, N3DS_BOTTOM_WIDTH - 64, y, 62, 14, 0x000000FF);
-    DrawNumber(framebuffer, counter_fps, N3DS_BOTTOM_WIDTH - 61, y + 2, 2,
+    FillBottom(framebuffer, N3DS_BOTTOM_WIDTH - 94, y, 92, 14, 0x000000FF);
+    DrawNumber(framebuffer, counter_fps, N3DS_BOTTOM_WIDTH - 91, y + 2, 2,
                0xFFFFFFFF);
-    DrawNumber(framebuffer, counter_work_ms, N3DS_BOTTOM_WIDTH - 31, y + 2, 2,
+    DrawNumber(framebuffer, counter_work_ms, N3DS_BOTTOM_WIDTH - 61, y + 2, 2,
                0x80FF80FF);
+    DrawNumber(framebuffer, counter_compose_ms, N3DS_BOTTOM_WIDTH - 31, y + 2, 2,
+               0xFFE060FF);
 }
 
-static void PresentBottom(void)
+// ==========================================================================
+// Presenting. The game's thread hands each frame (a copy) to a thread on
+// another core, which composes both screens, swaps them and waits for the
+// vertical blank, while the game makes the next frame. The game waits only
+// if that thread has not finished the previous one, so the vertical blank
+// still sets the pace. Composing took the game's core ~3 ms of each frame.
+
+typedef struct
 {
-    // Whether each of the two buffers has anything but black.
-    static boolean drawn[2] = {true, true};
-    static int frame = 0, buffer = 0;
-    static boolean showing = false;
-    u32 *framebuffer;
-    int x, y, k;
+    pixel_t *top;
+    int top_size;
+    int width, height;
+    u32 colors[256];        // palette in the framebuffer format (RGBA8)
+    boolean bottom;         // the bottom screen is updated (every other frame)
+    boolean bottom_showing; // and bottom_screen has something
+    pixel_t bottom_screen[N3DS_BOTTOM_WIDTH * N3DS_BOTTOM_HEIGHT];
+} frame_t;
 
-    // Every other frame: 30 per second.
-    if ((++frame & 1) == 0)
-    {
-        showing = N3DS_DrawBottom != NULL && N3DS_DrawBottom(bottom_screen);
-        framebuffer = (u32 *) gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
+static frame_t frame;
+static LightEvent frame_ready, frame_done;
+static Thread present_thread = NULL;
+static volatile boolean present_quit = false;
+static u64 compose_ticks; // composing the last frame
 
-        if (showing)
-        {
-            // 8 columns at a time, as on the top screen.
-            for (x = 0; x < N3DS_BOTTOM_WIDTH; x += 8)
-            {
-                u32 *column = framebuffer + x * TOP_HEIGHT + (TOP_HEIGHT - 1);
-
-                for (y = 0; y < N3DS_BOTTOM_HEIGHT; ++y)
-                {
-                    const pixel_t *source = bottom_screen + y * N3DS_BOTTOM_WIDTH + x;
-
-                    for (k = 0; k < 8; ++k)
-                    {
-                        column[k * TOP_HEIGHT - y] = colors[source[k]];
-                    }
-                }
-            }
-
-            drawn[buffer] = true;
-        }
-        else if (drawn[buffer])
-        {
-            memset(framebuffer, 0, N3DS_BOTTOM_WIDTH * TOP_HEIGHT * sizeof(u32));
-            drawn[buffer] = false;
-        }
-        else if (!n3ds_show_fps)
-        {
-            framebuffer = NULL; // already black
-        }
-
-        if (framebuffer != NULL)
-        {
-            if (n3ds_show_fps)
-            {
-                DrawFrameCounter(framebuffer);
-                drawn[buffer] = true;
-            }
-
-            GSPGPU_FlushDataCache(framebuffer,
-                                  N3DS_BOTTOM_WIDTH * TOP_HEIGHT * sizeof(u32));
-            gfxScreenSwapBuffers(GFX_BOTTOM, false);
-            buffer ^= 1;
-        }
-    }
-
-    UpdateBottomBacklight(showing);
-}
-
-
-void N3DS_Present(const pixel_t *buffer, int width, int height,
-                  const SDL_Color *palette, boolean palette_changed)
+// The top screen (400x240): the frame stretched from its height to 240
+// rows (Doom's 1.2 pixel aspect ratio) and centered when narrower than 400.
+static void ComposeTop(const frame_t *f)
 {
     static int rows[TOP_HEIGHT];
     static u32 weights[TOP_HEIGHT];
     static int rows_height = 0, rows_width = 0, rows_smooth = -1;
-    static u64 work_start = 0;
     u32 *framebuffer;
     int left, x, y, k;
 
-    // Closed from the HOME Menu: the screens are no longer ours.
-    if (N3DS_IsClosing())
-    {
-        return;
-    }
-
-    if (palette_changed)
-    {
-        for (k = 0; k < 256; ++k)
-        {
-            colors[k] = ((u32) palette[k].r << 24) | ((u32) palette[k].g << 16)
-                      | ((u32) palette[k].b << 8) | 0xFF;
-        }
-    }
-
     // Source row of each screen row, and how much of the next one to blend.
-    if (rows_height != height || rows_width != width
+    if (rows_height != f->height || rows_width != f->width
      || rows_smooth != n3ds_smooth_scaling)
     {
         for (y = 0; y < TOP_HEIGHT; ++y)
         {
-            const int position = y * height * 256 / TOP_HEIGHT;
+            const int position = y * f->height * 256 / TOP_HEIGHT;
             const int row = position / 256;
 
-            rows[y] = row * width;
-            weights[y] = row + 1 < height && n3ds_smooth_scaling ?
+            rows[y] = row * f->width;
+            weights[y] = row + 1 < f->height && n3ds_smooth_scaling ?
                          position % 256 : 0;
         }
 
-        rows_height = height;
-        rows_width = width;
+        rows_height = f->height;
+        rows_width = f->width;
         rows_smooth = n3ds_smooth_scaling;
     }
 
@@ -457,31 +420,31 @@ void N3DS_Present(const pixel_t *buffer, int width, int height,
 
     // High resolution rendering (twice as wide and high): each screen pixel
     // is the average of 2x2 pixels, the screen's height from its 400 rows.
-    if (width > TOP_WIDTH)
+    if (f->width > TOP_WIDTH)
     {
-        const int screen_width = width / 2 > TOP_WIDTH ? TOP_WIDTH : width / 2;
+        const int screen_width = f->width / 2 > TOP_WIDTH ? TOP_WIDTH : f->width / 2;
 
         left = (TOP_WIDTH - screen_width) / 2;
         memset(framebuffer, 0, TOP_WIDTH * TOP_HEIGHT * sizeof(u32));
 
         for (y = 0; y < TOP_HEIGHT; ++y)
         {
-            const int source_y = y * height / TOP_HEIGHT;
-            const pixel_t *row0 = buffer + source_y * width;
-            const pixel_t *row1 = source_y + 1 < height ? row0 + width : row0;
+            const int source_y = y * f->height / TOP_HEIGHT;
+            const pixel_t *row0 = f->top + source_y * f->width;
+            const pixel_t *row1 = source_y + 1 < f->height ? row0 + f->width : row0;
             u32 *pixel = framebuffer + left * TOP_HEIGHT + (TOP_HEIGHT - 1 - y);
 
             for (x = 0; x < screen_width; ++x, pixel += TOP_HEIGHT)
             {
                 // A quarter of each color (the 2 lowest bits are dropped).
-                *pixel = ((colors[row0[2 * x]] >> 2) & 0x3F3F3F3F)
-                       + ((colors[row0[2 * x + 1]] >> 2) & 0x3F3F3F3F)
-                       + ((colors[row1[2 * x]] >> 2) & 0x3F3F3F3F)
-                       + ((colors[row1[2 * x + 1]] >> 2) & 0x3F3F3F3F);
+                *pixel = ((f->colors[row0[2 * x]] >> 2) & 0x3F3F3F3F)
+                       + ((f->colors[row0[2 * x + 1]] >> 2) & 0x3F3F3F3F)
+                       + ((f->colors[row1[2 * x]] >> 2) & 0x3F3F3F3F)
+                       + ((f->colors[row1[2 * x + 1]] >> 2) & 0x3F3F3F3F);
             }
         }
 
-        goto shown;
+        goto composed;
     }
 
     // The framebuffer is rotated: screen pixel (x, y) is at
@@ -489,40 +452,40 @@ void N3DS_Present(const pixel_t *buffer, int width, int height,
     // each source row stay in a few cache lines. Stretching 200 rows to 240,
     // a screen row between two source rows is a blend of both (weights[y],
     // out of 256): repeating one row in five left visible steps.
-    left = (TOP_WIDTH - width) / 2;
+    left = (TOP_WIDTH - f->width) / 2;
 
     if (left > 0)
     {
         memset(framebuffer, 0, left * TOP_HEIGHT * sizeof(u32));
-        memset(framebuffer + (left + width) * TOP_HEIGHT, 0,
-               (TOP_WIDTH - left - width) * TOP_HEIGHT * sizeof(u32));
+        memset(framebuffer + (left + f->width) * TOP_HEIGHT, 0,
+               (TOP_WIDTH - left - f->width) * TOP_HEIGHT * sizeof(u32));
     }
 
-    for (x = 0; x < width; x += 8)
+    for (x = 0; x < f->width; x += 8)
     {
-        const int columns = width - x < 8 ? width - x : 8;
+        const int columns = f->width - x < 8 ? f->width - x : 8;
         u32 *column = framebuffer + (left + x) * TOP_HEIGHT + (TOP_HEIGHT - 1);
 
         for (y = 0; y < TOP_HEIGHT; ++y)
         {
-            const pixel_t *source = buffer + rows[y] + x;
+            const pixel_t *source = f->top + rows[y] + x;
             const u32 weight = weights[y];
 
             if (weight == 0)
             {
                 for (k = 0; k < columns; ++k)
                 {
-                    column[k * TOP_HEIGHT - y] = colors[source[k]];
+                    column[k * TOP_HEIGHT - y] = f->colors[source[k]];
                 }
             }
             else
             {
-                const pixel_t *next = source + width;
+                const pixel_t *next = source + f->width;
 
                 for (k = 0; k < columns; ++k)
                 {
-                    const u32 c0 = colors[source[k]];
-                    const u32 c1 = colors[next[k]];
+                    const u32 c0 = f->colors[source[k]];
+                    const u32 c1 = f->colors[next[k]];
                     // Two channels at a time in each 32-bit product.
                     const u32 low = (((c0 & 0x00FF00FF) * (256 - weight)
                                     + (c1 & 0x00FF00FF) * weight) >> 8) & 0x00FF00FF;
@@ -535,13 +498,209 @@ void N3DS_Present(const pixel_t *buffer, int width, int height,
         }
     }
 
-shown:
+composed:
     GSPGPU_FlushDataCache(framebuffer, TOP_WIDTH * TOP_HEIGHT * sizeof(u32));
     gfxScreenSwapBuffers(GFX_TOP, false);
-    PresentBottom();
-    CountFrame((int) ((svcGetSystemTick() - work_start) / CPU_TICKS_PER_USEC));
+}
+
+static void ComposeBottom(const frame_t *f)
+{
+    // Whether each of the two buffers has anything but black.
+    static boolean drawn[2] = {true, true};
+    static int buffer = 0;
+    u32 *framebuffer;
+    int x, y, k;
+
+    framebuffer = (u32 *) gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
+
+    if (f->bottom_showing)
+    {
+        // 8 columns at a time, as on the top screen.
+        for (x = 0; x < N3DS_BOTTOM_WIDTH; x += 8)
+        {
+            u32 *column = framebuffer + x * TOP_HEIGHT + (TOP_HEIGHT - 1);
+
+            for (y = 0; y < N3DS_BOTTOM_HEIGHT; ++y)
+            {
+                const pixel_t *source = f->bottom_screen + y * N3DS_BOTTOM_WIDTH + x;
+
+                for (k = 0; k < 8; ++k)
+                {
+                    column[k * TOP_HEIGHT - y] = f->colors[source[k]];
+                }
+            }
+        }
+
+        drawn[buffer] = true;
+    }
+    else if (drawn[buffer])
+    {
+        memset(framebuffer, 0, N3DS_BOTTOM_WIDTH * TOP_HEIGHT * sizeof(u32));
+        drawn[buffer] = false;
+    }
+    else if (!n3ds_show_fps)
+    {
+        return; // already black
+    }
+
+    if (n3ds_show_fps)
+    {
+        DrawFrameCounter(framebuffer);
+        drawn[buffer] = true;
+    }
+
+    GSPGPU_FlushDataCache(framebuffer,
+                          N3DS_BOTTOM_WIDTH * TOP_HEIGHT * sizeof(u32));
+    gfxScreenSwapBuffers(GFX_BOTTOM, false);
+    buffer ^= 1;
+}
+
+static void ShowFrame(void)
+{
+    const u64 start = svcGetSystemTick();
+
+    ComposeTop(&frame);
+
+    if (frame.bottom)
+    {
+        ComposeBottom(&frame);
+    }
+
+    compose_ticks = svcGetSystemTick() - start;
     gspWaitForVBlank();
-    work_start = svcGetSystemTick();
+}
+
+static void PresentThread(void *arg)
+{
+    for (;;)
+    {
+        LightEvent_Wait(&frame_ready);
+
+        if (present_quit)
+        {
+            break;
+        }
+
+        // Closed from the HOME Menu: the screens are no longer ours.
+        if (!N3DS_IsClosing())
+        {
+            ShowFrame();
+        }
+
+        LightEvent_Signal(&frame_done);
+    }
+}
+
+// On the system core (1), which the game may use up to 80% of the time;
+// without it, everything stays on the game's core.
+static void StartPresenting(void)
+{
+    s32 priority = 0x30;
+
+    LightEvent_Init(&frame_ready, RESET_ONESHOT);
+    LightEvent_Init(&frame_done, RESET_STICKY);
+    LightEvent_Signal(&frame_done);
+
+    svcGetThreadPriority(&priority, CUR_THREAD_HANDLE);
+    APT_SetAppCpuTimeLimit(80);
+    present_thread = threadCreate(PresentThread, NULL, 32 * 1024, priority,
+                                  1, false);
+
+    printf("N3DS_Present: composing the screens on %s\n",
+           present_thread != NULL ? "core 1" : "the game's core");
+}
+
+void N3DS_StopPresenting(void)
+{
+    if (present_thread != NULL)
+    {
+        LightEvent_Wait(&frame_done);
+        present_quit = true;
+        LightEvent_Signal(&frame_ready);
+        threadJoin(present_thread, U64_MAX);
+        threadFree(present_thread);
+        present_thread = NULL;
+    }
+}
+
+void N3DS_Present(const pixel_t *buffer, int width, int height,
+                  const SDL_Color *palette, boolean palette_changed)
+{
+    static boolean started = false;
+    static int bottom_frames = 0;
+    static boolean showing = false;
+    static u64 work_start = 0;
+    u64 work_end;
+    int k;
+
+    // Closed from the HOME Menu: the screens are no longer ours.
+    if (N3DS_IsClosing())
+    {
+        return;
+    }
+
+    if (!started)
+    {
+        StartPresenting();
+        started = true;
+    }
+
+    // Wait until the previous frame is on its way to the screen.
+    work_end = svcGetSystemTick();
+
+    if (present_thread != NULL)
+    {
+        LightEvent_Wait(&frame_done);
+        LightEvent_Clear(&frame_done);
+        CountFrame((int) ((work_end - work_start) / CPU_TICKS_PER_USEC),
+                   (int) (compose_ticks / CPU_TICKS_PER_USEC));
+        work_start = svcGetSystemTick();
+    }
+
+    // The other thread is idle: the frame is free to fill.
+    if (frame.top_size < width * height)
+    {
+        free(frame.top);
+        frame.top_size = width * height;
+        frame.top = malloc(frame.top_size * sizeof(*frame.top));
+    }
+
+    memcpy(frame.top, buffer, width * height * sizeof(*frame.top));
+    frame.width = width;
+    frame.height = height;
+
+    if (palette_changed)
+    {
+        for (k = 0; k < 256; ++k)
+        {
+            frame.colors[k] = ((u32) palette[k].r << 24)
+                            | ((u32) palette[k].g << 16)
+                            | ((u32) palette[k].b << 8) | 0xFF;
+        }
+    }
+
+    // The bottom screen, 30 times per second: drawn here, with the game.
+    frame.bottom = (++bottom_frames & 1) == 0;
+
+    if (frame.bottom)
+    {
+        showing = N3DS_DrawBottom != NULL && N3DS_DrawBottom(frame.bottom_screen);
+        frame.bottom_showing = showing;
+    }
+
+    UpdateBottomBacklight(showing);
+
+    if (present_thread != NULL)
+    {
+        LightEvent_Signal(&frame_ready);
+    }
+    else
+    {
+        ShowFrame();
+        CountFrame((int) ((work_end - work_start + compose_ticks) / CPU_TICKS_PER_USEC),
+                   (int) (compose_ticks / CPU_TICKS_PER_USEC));
+        work_start = svcGetSystemTick();
+    }
 
     // In the log: the first frame reaches the screen.
     {

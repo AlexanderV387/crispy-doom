@@ -369,6 +369,7 @@ void I_Error (const char *error, ...)
     // therefore be unable to otherwise see the message).
 #ifdef __3DS__
     // No message boxes: the screens are set up again to show it.
+    N3DS_StopPresenting();
     SDL_Quit();
     N3DS_ShowError(msgbuf);
 #else

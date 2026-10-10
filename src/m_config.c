@@ -786,6 +786,13 @@ static default_t extra_defaults_list[] =
     CONFIG_VARIABLE_INT(n3ds_show_fps),
 
     //!
+    // Nintendo 3DS: zoom of the bottom screen map, in percent of the
+    // automap's initial zoom of each level.
+    //
+
+    CONFIG_VARIABLE_INT(n3ds_map_zoom),
+
+    //!
     // Nintendo 3DS: version of the configuration, to update older ones.
     //
 

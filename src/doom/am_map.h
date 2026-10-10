@@ -39,8 +39,9 @@ void AM_Ticker (void);
 void AM_Drawer (void);
 
 #ifdef __3DS__
-// [3DS] The automap on the bottom screen.
-void AM_DrawBottom(pixel_t *screen, int y, int width, int height);
+// [3DS] The automap on the bottom screen, zoom in percent of each level's
+// initial zoom.
+void AM_DrawBottom(pixel_t *screen, int y, int width, int height, int zoom);
 #endif
 
 // Called to force the automap to quit

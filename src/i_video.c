@@ -297,6 +297,10 @@ static void SetShowCursor(boolean show)
 
 void I_ShutdownGraphics(void)
 {
+#ifdef __3DS__
+    N3DS_StopPresenting();
+#endif
+
     if (initialized)
     {
         SetShowCursor(true);

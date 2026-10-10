@@ -2324,9 +2324,8 @@ void AM_SetMarkPoints (int n, long *p)
 #ifdef __3DS__
 // [3DS] The automap on the bottom screen, with its own functions: always
 // following the player, in a part of another buffer (width x height at row
-// y). Its zoom is set for each level as the automap's own, and follows the
-// automap's while that one is open.
-void AM_DrawBottom(pixel_t *screen, int y, int width, int height)
+// y). Its zoom is in percent of the automap's initial zoom of each level.
+void AM_DrawBottom(pixel_t *screen, int y, int width, int height, int zoom)
 {
     static int bottom_flip[MAXWIDTH];
     static fixed_t bottom_scale;
@@ -2386,12 +2385,6 @@ void AM_DrawBottom(pixel_t *screen, int y, int width, int height)
         bottom_episode = gameepisode;
     }
 
-    // The zoom of the open automap, in low resolution pixels.
-    if (automapactive)
-    {
-        bottom_scale = scale_mtof >> hires;
-    }
-
     I_VideoBuffer = screen + y * width;
     am_flipx = bottom_flip;
     crispy->hires = 0;
@@ -2399,7 +2392,7 @@ void AM_DrawBottom(pixel_t *screen, int y, int width, int height)
     f_x = f_y = 0;
     f_w = width;
     f_h = height;
-    scale_mtof = bottom_scale;
+    scale_mtof = (fixed_t) ((int64_t) bottom_scale * zoom / 100);
     scale_ftom = FixedDiv(FRACUNIT, scale_mtof);
     m_w = FTOM(f_w);
     m_h = FTOM(f_h);

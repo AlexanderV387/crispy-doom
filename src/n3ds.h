@@ -34,10 +34,14 @@ void N3DS_Init(void);
 
 // Shows the 8-bit frame on the top screen (400x240): stretched from its
 // height to 240 rows (Doom's 1.2 pixel aspect ratio) and centered when
-// narrower than 400, then waits for the vertical blank. SDL's software
-// renderer on the 3DS scales and rotates with the CPU and ignores vsync.
+// narrower than 400, composed on another core, at the vertical blank; and
+// the bottom screen. SDL's software renderer on the 3DS scales and rotates
+// with the CPU and ignores vsync.
 void N3DS_Present(const pixel_t *buffer, int width, int height,
                   const SDL_Color *palette, boolean palette_changed);
+
+// Stops the thread that composes the screens (before SDL closes them).
+void N3DS_StopPresenting(void);
 
 // The HOME Menu is closing the game: only quit, as soon as possible.
 boolean N3DS_IsClosing(void);
@@ -55,6 +59,7 @@ extern int n3ds_bottom_map;     // the automap on the bottom screen
 extern int n3ds_hud_position;   // status bar: 0 top, 1 middle, 2 bottom
 extern int n3ds_smooth_scaling; // blend rows when stretching to 240 rows
 extern int n3ds_show_fps;       // frame counter on the bottom screen
+extern int n3ds_map_zoom;       // bottom screen map: % of each level's zoom
 extern int n3ds_config_version; // for changes to older configurations
 
 void N3DS_BindVariables(void);
@@ -62,6 +67,9 @@ void N3DS_BindVariables(void);
 // Bottom screen, 8-bit like the game's own screen.
 #define N3DS_BOTTOM_WIDTH 320
 #define N3DS_BOTTOM_HEIGHT 240
+
+// Where the bottom screen is being touched, if it is.
+boolean N3DS_GetTouch(int *x, int *y);
 
 // Set by the game: draws the bottom screen and returns whether it shows
 // anything. When it does not, it stays black and a tap turns it off.

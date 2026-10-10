@@ -16,7 +16,8 @@
 //     bar on the top screen), the status bar and the automap share it:
 //     the bar above the map, or below it with its option. With a smaller
 //     view the bar is on the top screen, as in the original, and the map
-//     fills the bottom screen. Only its option hides the map.
+//     fills the bottom screen. Only its option hides the map. Buttons on
+//     the map zoom it.
 //
 
 #ifdef __3DS__
@@ -76,6 +77,91 @@ static void DrawStatusBar(pixel_t *screen, int y)
     }
 }
 
+// Zoom buttons, in the lower left corner of the map: "+" above "-".
+#define BUTTON_SIZE 24
+#define BUTTON_X 4
+#define MIN_ZOOM 25
+#define MAX_ZOOM 800
+
+static void FillRect(pixel_t *screen, int x, int y, int w, int h, int color)
+{
+    int i;
+
+    for (i = y; i < y + h; ++i)
+    {
+        memset(screen + i * N3DS_BOTTOM_WIDTH + x, color, w * sizeof(*screen));
+    }
+}
+
+static void DrawZoomButton(pixel_t *screen, int y, boolean plus)
+{
+    const int center = BUTTON_SIZE / 2;
+
+    FillRect(screen, BUTTON_X, y, BUTTON_SIZE, BUTTON_SIZE, 100);   // gray
+    FillRect(screen, BUTTON_X + 2, y + 2, BUTTON_SIZE - 4, BUTTON_SIZE - 4, 0);
+    FillRect(screen, BUTTON_X + 5, y + center - 1, BUTTON_SIZE - 10, 2, 4);
+
+    if (plus)
+    {
+        FillRect(screen, BUTTON_X + center - 1, y + 5, 2, BUTTON_SIZE - 10, 4);
+    }
+}
+
+// A tap zooms by a quarter; holding the button zooms on, 30 steps a second.
+static void UpdateZoom(int plus_y, int minus_y)
+{
+    static int held = 0;
+    int x, y, direction = 0;
+
+    if (N3DS_GetTouch(&x, &y) && x < BUTTON_X + BUTTON_SIZE + 8)
+    {
+        if (y >= plus_y - 4 && y < plus_y + BUTTON_SIZE + 2)
+        {
+            direction = 1;
+        }
+        else if (y >= minus_y - 2 && y < minus_y + BUTTON_SIZE + 4)
+        {
+            direction = -1;
+        }
+    }
+
+    if (direction == 0)
+    {
+        held = 0;
+        return;
+    }
+
+    if (held == 0 || held >= 10)
+    {
+        const int step = held == 0 ? 125 : 104;
+
+        if (direction > 0)
+        {
+            n3ds_map_zoom = n3ds_map_zoom * step / 100;
+        }
+        else
+        {
+            n3ds_map_zoom = n3ds_map_zoom * 100 / step;
+        }
+    }
+
+    n3ds_map_zoom = BETWEEN(MIN_ZOOM, MAX_ZOOM, n3ds_map_zoom);
+    ++held;
+}
+
+// The map at row y, with its zoom buttons.
+static void DrawMap(pixel_t *screen, int y, int height)
+{
+    const int minus_y = y + height - BUTTON_SIZE - 4;
+    const int plus_y = minus_y - BUTTON_SIZE - 4;
+
+    UpdateZoom(plus_y, minus_y);
+    AM_DrawBottom(screen, y, N3DS_BOTTOM_WIDTH, height,
+                  BETWEEN(MIN_ZOOM, MAX_ZOOM, n3ds_map_zoom));
+    DrawZoomButton(screen, plus_y, true);
+    DrawZoomButton(screen, minus_y, false);
+}
+
 boolean N3DS_DoomDrawBottom(pixel_t *screen)
 {
     const boolean bar = screenblocks == FULL_VIEW;
@@ -96,7 +182,7 @@ boolean N3DS_DoomDrawBottom(pixel_t *screen)
     }
     else if (bar && n3ds_hud_position == 2)
     {
-        AM_DrawBottom(screen, 0, N3DS_BOTTOM_WIDTH, map_height);
+        DrawMap(screen, 0, map_height);
         DrawStatusBar(screen, map_height);
     }
     else
@@ -106,8 +192,7 @@ boolean N3DS_DoomDrawBottom(pixel_t *screen)
             DrawStatusBar(screen, 0);
         }
 
-        AM_DrawBottom(screen, N3DS_BOTTOM_HEIGHT - map_height,
-                      N3DS_BOTTOM_WIDTH, map_height);
+        DrawMap(screen, N3DS_BOTTOM_HEIGHT - map_height, map_height);
     }
 
     return true;
