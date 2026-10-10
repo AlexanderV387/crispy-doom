@@ -623,7 +623,8 @@ void N3DS_InitControls(void)
 
     joybmenu = N3DS_JOY_START;
     joystick_y_axis = SDL_CONTROLLER_AXIS_LEFTY;
-    joystick_look_axis = -1;
+    // Up and down on the C-stick look, with "Allow Free Look" on.
+    joystick_look_axis = SDL_CONTROLLER_AXIS_RIGHTY;
     n3ds_run_mode = BETWEEN(0, N3DS_NUM_RUN_MODES - 1, n3ds_run_mode);
     n3ds_touch_speed = BETWEEN(1, 10, n3ds_touch_speed);
 }
