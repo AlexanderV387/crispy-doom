@@ -3183,6 +3183,14 @@ boolean M_Responder (event_t* ev)
 	    itemOn = currentMenu->lastOn;
 	    S_StartSoundOptional(NULL, sfx_mnubak, sfx_swtchn); // [NS] Optional menu sounds.
 	}
+#ifdef __3DS__
+	// [3DS] B on the main menu closes it, as START does.
+	else
+	{
+	    M_ClearMenus();
+	    S_StartSoundOptional(NULL, sfx_mnucls, sfx_swtchx); // [NS] Optional menu sounds.
+	}
+#endif
 	return true;
     }
     // [crispy] delete a savegame
