@@ -25,8 +25,19 @@
 #include "SDL.h"
 #include "doomtype.h"
 
+// The game of this program (set by the build): its folder, its picker and
+// its controls.
+#if defined(N3DS_GAME_STRIFE)
+#define N3DS_GAME "strife"
+#define N3DS_TITLE "CRISPY STRIFE 3DS"
+#else
+#define N3DS_GAME_DOOM
+#define N3DS_GAME "doom"
+#define N3DS_TITLE "CRISPY DOOM 3DS"
+#endif
+
 // Folder of the game data, the configuration and the saved games.
-#define N3DS_DATA_DIR "sdmc:/3ds/crispy-doom/"
+#define N3DS_DATA_DIR "sdmc:/3ds/crispy-" N3DS_GAME "/"
 
 // What SDL's own 3DS main would do (804 MHz on the New 3DS), and the data
 // folder becomes the current directory, where the IWADs are looked for.
@@ -91,11 +102,17 @@ boolean N3DS_TouchReserved(int x, int y);
 typedef struct
 {
     const char *name;   // in the menu
-    int *joyb;          // the game's joystick button variable
+    const char *config; // its configuration variable
+    int *joyb;          // the game's joystick button variable, or
+    int *key;           // a key it presses (actions with no joystick button)
     int default_keys;   // 3DS buttons (libctru's KEY_*)
 } n3ds_action_t;
 
+#if defined(N3DS_GAME_STRIFE)
+#define N3DS_NUM_ACTIONS 14
+#else
 #define N3DS_NUM_ACTIONS 10
+#endif
 #define N3DS_ACTION_RUN 2
 
 extern const n3ds_action_t n3ds_actions[N3DS_NUM_ACTIONS];
@@ -129,6 +146,14 @@ void N3DS_BindKey(int action, int key);
 
 // A bindable button pressed since the last call, -1 for START, or 0.
 int N3DS_TakeNewKey(void);
+
+// The bottom screen map's zoom buttons, in the lower left corner of the map
+// (its rows map_y to map_y + map_height): reads the touch screen and
+// returns the zoom (n3ds_map_zoom); then draws them over the map, with
+// three colors of the game's palette.
+int N3DS_UpdateMapZoom(int map_y, int map_height);
+void N3DS_DrawMapButtons(pixel_t *screen, int map_y, int map_height,
+                         int gray, int black, int white);
 
 // Set by the game: draws the bottom screen and returns whether it shows
 // anything. When it does not, it stays black and a tap turns it off.

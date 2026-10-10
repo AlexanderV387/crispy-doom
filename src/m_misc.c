@@ -37,6 +37,10 @@
 
 #include "i_system.h"
 #include "m_misc.h"
+
+#ifdef __3DS__
+#include "n3ds.h"
+#endif
 #include "z_zone.h"
 
 #ifdef _WIN32
@@ -444,13 +448,23 @@ boolean M_WriteFile(const char *name, const void *source, int length)
     FILE *handle;
     int	count;
 	
+#ifdef __3DS__
+    // [3DS] Written over the old file: on the SD card, writing a new or
+    // emptied file sometimes takes seconds.
+    handle = N3DS_OpenRewrite(name);
+#else
     handle = M_fopen(name, "wb");
+#endif
 
     if (handle == NULL)
 	return false;
 
     count = fwrite(source, 1, length, handle);
+#ifdef __3DS__
+    N3DS_CloseRewrite(handle);
+#else
     fclose(handle);
+#endif
 	
     if (count < length)
 	return false;

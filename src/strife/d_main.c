@@ -81,6 +81,11 @@
 
 #include "d_main.h"
 
+#ifdef __3DS__
+#include "n3ds.h"
+#include "n3ds_strife.h"
+#endif
+
 #include "strife_icon.c"
 
 //
@@ -275,6 +280,10 @@ void D_Display (void)
         // haleyjd 08/29/10: [STRIFE] Always redraw sbar if menu is/was active
         if (menuactivestate || (inhelpscreensstate && !inhelpscreens))
             redrawsbar = true;              // just put away the help screen
+#ifdef __3DS__
+        // [3DS] The bottom screen's status bar also updates the widgets.
+        redrawsbar = true;
+#endif
         ST_Drawer (viewheight == SCREENHEIGHT, redrawsbar );
         fullscreen = viewheight == SCREENHEIGHT;
         break;
@@ -476,6 +485,9 @@ void D_BindVariables(void)
     I_BindVideoVariables();
     I_BindJoystickVariables();
     I_BindSoundVariables();
+#ifdef __3DS__
+    N3DS_BindVariables();
+#endif
 
     M_BindBaseControls();
     M_BindWeaponControls();
@@ -1859,6 +1871,20 @@ void D_DoomMain (void)
 
     // Save configuration at exit.
     I_AtExit(M_SaveDefaults, false);
+
+#ifdef __3DS__
+    N3DS_InitControls();
+    N3DS_InGame = N3DS_StrifeInGame;
+    N3DS_SaveOnSuspend = M_SaveDefaults;
+    N3DS_DrawBottom = N3DS_StrifeDrawBottom;
+    n3ds_config_version = 2;
+
+    // The Old 3DS draws at a third of the speed: never in high resolution.
+    if (!N3DS_IsNew3DS())
+    {
+        crispy->hires = 0;
+    }
+#endif
 
     // Find the main IWAD file and load it.
     iwadfile = D_FindIWAD(IWAD_MASK_STRIFE, &gamemission);

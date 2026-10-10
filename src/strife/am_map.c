@@ -286,6 +286,7 @@ void (*AM_drawFline)(fline_t*, int) = AM_drawFline_Vanilla;
 void AM_rotate (int64_t *x, int64_t *y, angle_t a);
 static void AM_rotatePoint (mpoint_t *pt);
 static void AM_drawCrosshair(int color, boolean force); // [crispy] restore crosshair
+static void AM_initColorShades(void);
 static mpoint_t mapcenter;
 static angle_t mapangle;
 
@@ -580,8 +581,6 @@ void AM_LevelInit(boolean reinit)
 {
     fixed_t a, b;
     static int f_h_old;
-    // [crispy] Only need to precalculate color lookup tables once
-    static int precalc_once;
 
     f_x = f_y = 0;
     f_w = SCREENWIDTH;
@@ -613,7 +612,15 @@ void AM_LevelInit(boolean reinit)
 
     f_h_old = f_h;
 
-    // [crispy] Precalculate color lookup tables for antialised line drawing using COLORMAP
+    AM_initColorShades();
+}
+
+// [crispy] Precalculate color lookup tables for antialised line drawing using COLORMAP
+static void AM_initColorShades(void)
+{
+    // [crispy] Only need to precalculate color lookup tables once
+    static int precalc_once;
+
     if (!precalc_once)
     {
         precalc_once = 1;
@@ -726,8 +733,22 @@ AM_Responder
 
     rc = false;
 
+#ifdef __3DS__
+    // [3DS] Once per press: held, SELECT opened and closed it over and over.
+    static int last_buttons = 0;
+    const int pressed = ev->type == ev_joystick ? ev->data1 & ~last_buttons : 0;
+
+    if (ev->type == ev_joystick)
+    {
+        last_buttons = ev->data1;
+    }
+
+    if (ev->type == ev_joystick && joybautomap >= 0
+        && (pressed & (1 << joybautomap)) != 0)
+#else
     if (ev->type == ev_joystick && joybautomap >= 0
         && (ev->data1 & (1 << joybautomap)) != 0 && joywait < I_GetTime())
+#endif
     {
         joywait = I_GetTime() + 5;
 
@@ -1998,3 +2019,98 @@ void AM_SetMarkPoints (int n, long *p)
         markpoints[i].y = (int64_t)*p++;
     }
 }
+
+#ifdef __3DS__
+// [3DS] The automap on the bottom screen, with its own functions: always
+// following the player, in a part of another buffer (width x height at row
+// y). Its zoom is in percent of the automap's initial zoom of each level.
+void AM_DrawBottom(pixel_t *screen, int y, int width, int height, int zoom)
+{
+    static fixed_t bottom_scale;
+    static int bottom_map = -1;
+
+    // The automap's state, put back at the end.
+    const int saved_f_x = f_x, saved_f_y = f_y, saved_f_w = f_w, saved_f_h = f_h;
+    const int64_t saved_m_x = m_x, saved_m_y = m_y, saved_m_x2 = m_x2,
+                  saved_m_y2 = m_y2, saved_m_w = m_w, saved_m_h = m_h;
+    const int64_t saved_next_m_x = next_m_x, saved_next_m_y = next_m_y;
+    const fixed_t saved_scale_mtof = scale_mtof, saved_scale_ftom = scale_ftom;
+    player_t *const saved_plr = plr;
+    const mpoint_t saved_mapcenter = mapcenter;
+    const angle_t saved_mapangle = mapangle;
+    pixel_t *const saved_buffer = I_VideoBuffer;
+    const int hires = crispy->hires;
+
+    AM_initColorShades();
+
+    // Zoom of a new level, as in AM_LevelInit.
+    if (bottom_map != gamemap)
+    {
+        fixed_t min_vx = INT_MAX, min_vy = INT_MAX;
+        fixed_t max_vx = -INT_MAX, max_vy = -INT_MAX;
+        fixed_t w, h, a, b;
+        int i;
+
+        for (i = 0; i < numvertexes; i++)
+        {
+            min_vx = MIN(min_vx, vertexes[i].x);
+            max_vx = MAX(max_vx, vertexes[i].x);
+            min_vy = MIN(min_vy, vertexes[i].y);
+            max_vy = MAX(max_vy, vertexes[i].y);
+        }
+
+        w = (max_vx >> FRACTOMAPBITS) - (min_vx >> FRACTOMAPBITS);
+        h = (max_vy >> FRACTOMAPBITS) - (min_vy >> FRACTOMAPBITS);
+        a = FixedDiv(width, (w>>MAPBITS < 2048) ? 2*(w>>MAPBITS) : 4096);
+        b = FixedDiv(height, (h>>MAPBITS < 2048) ? 2*(h>>MAPBITS) : 4096);
+        bottom_scale = FixedDiv(a < b ? a : b, (int) (0.7*MAPUNIT));
+
+        bottom_map = gamemap;
+    }
+
+    I_VideoBuffer = screen + y * width;
+    crispy->hires = 0;
+    plr = &players[displayplayer];
+    f_x = f_y = 0;
+    f_w = width;
+    f_h = height;
+    scale_mtof = (fixed_t) ((int64_t) bottom_scale * zoom / 100);
+    scale_ftom = FixedDiv(FRACUNIT, scale_mtof);
+    m_w = FTOM(f_w);
+    m_h = FTOM(f_h);
+    AM_doFollowPlayer();
+
+    if (crispy->automaprotate)
+    {
+        mapcenter.x = m_x + m_w / 2;
+        mapcenter.y = m_y + m_h / 2;
+        mapangle = ANG90 - plr->mo->angle;
+    }
+
+    AM_clearFB(BACKGROUND);
+    AM_drawWalls();
+    AM_drawPlayers();
+    if (cheating == 2 || plr->powers[pw_allmap] > 1)
+        AM_drawThings();
+
+    crispy->hires = hires;
+    I_VideoBuffer = saved_buffer;
+    f_x = saved_f_x;
+    f_y = saved_f_y;
+    f_w = saved_f_w;
+    f_h = saved_f_h;
+    m_x = saved_m_x;
+    m_y = saved_m_y;
+    m_x2 = saved_m_x2;
+    m_y2 = saved_m_y2;
+    m_w = saved_m_w;
+    m_h = saved_m_h;
+    next_m_x = saved_next_m_x;
+    next_m_y = saved_next_m_y;
+    scale_mtof = saved_scale_mtof;
+    scale_ftom = saved_scale_ftom;
+    plr = saved_plr;
+    mapcenter = saved_mapcenter;
+    mapangle = saved_mapangle;
+}
+#endif

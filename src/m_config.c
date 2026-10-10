@@ -828,6 +828,10 @@ static default_t extra_defaults_list[] =
     CONFIG_VARIABLE_INT(n3ds_bind_jump),
     CONFIG_VARIABLE_INT(n3ds_bind_strafeleft),
     CONFIG_VARIABLE_INT(n3ds_bind_straferight),
+    CONFIG_VARIABLE_INT(n3ds_bind_useitem),
+    CONFIG_VARIABLE_INT(n3ds_bind_previtem),
+    CONFIG_VARIABLE_INT(n3ds_bind_nextitem),
+    CONFIG_VARIABLE_INT(n3ds_bind_mission),
 
     //!
     // Nintendo 3DS: version of the configuration, to update older ones.

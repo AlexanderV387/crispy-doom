@@ -37,6 +37,11 @@ void I_Endoom(byte *endoom_data)
     int y;
     int indent;
 
+#ifdef __3DS__
+    // [3DS] No text screen at exit: it waited for a key on a black screen.
+    return;
+#endif
+
     // Set up text mode screen
 
     TXT_Init();

@@ -28,6 +28,7 @@ set(STRIFE_SOURCES
     info.c          info.h
     m_crispy.c      m_crispy.h
     m_menu.c        m_menu.h
+    n3ds_strife.c   n3ds_strife.h
     m_random.c      m_random.h
     m_saves.c       m_saves.h
     p_blockmap.c

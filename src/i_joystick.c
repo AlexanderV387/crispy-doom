@@ -483,19 +483,38 @@ void I_UpdateGamepad(void)
 #include "n3ds.h"
 
 // The project's FPS standard: R fires, A uses, B runs, L strafes, X / Y
-// change weapons, SELECT shows the map.
+// change weapons, SELECT shows the map. The first three are the same in
+// every game (N3DS_ACTION_RUN).
 const n3ds_action_t n3ds_actions[N3DS_NUM_ACTIONS] =
 {
-    { "Fire",            &joybfire,        KEY_R | KEY_ZR },
-    { "Use / Open",      &joybuse,         KEY_A },
-    { "Run",             &joybspeed,       KEY_B | KEY_ZL },
-    { "Strafe",          &joybstrafe,      KEY_L },
-    { "Previous Weapon", &joybprevweapon,  KEY_Y },
-    { "Next Weapon",     &joybnextweapon,  KEY_X },
-    { "Automap",         &joybautomap,     KEY_SELECT },
-    { "Jump",            &joybjump,        0 },
-    { "Strafe Left",     &joybstrafeleft,  0 },
-    { "Strafe Right",    &joybstraferight, 0 },
+#if defined(N3DS_GAME_STRIFE)
+    // Strife's inventory takes Y (use the item) and ZL / ZR (choose it).
+    { "Fire",            "n3ds_bind_fire",        &joybfire,        NULL, KEY_R },
+    { "Use / Talk",      "n3ds_bind_use",         &joybuse,         NULL, KEY_A },
+    { "Run",             "n3ds_bind_run",         &joybspeed,       NULL, KEY_B },
+    { "Strafe",          "n3ds_bind_strafe",      &joybstrafe,      NULL, KEY_L },
+    { "Previous Weapon", "n3ds_bind_prevweapon",  &joybprevweapon,  NULL, 0 },
+    { "Next Weapon",     "n3ds_bind_nextweapon",  &joybnextweapon,  NULL, KEY_X },
+    { "Automap",         "n3ds_bind_automap",     &joybautomap,     NULL, KEY_SELECT },
+    { "Jump",            "n3ds_bind_jump",        &joybjump,        NULL, 0 },
+    { "Strafe Left",     "n3ds_bind_strafeleft",  &joybstrafeleft,  NULL, 0 },
+    { "Strafe Right",    "n3ds_bind_straferight", &joybstraferight, NULL, 0 },
+    { "Use Item",        "n3ds_bind_useitem",     &joybuseartifact, NULL, KEY_Y },
+    { "Previous Item",   "n3ds_bind_previtem",    &joybinvleft,     NULL, KEY_ZL },
+    { "Next Item",       "n3ds_bind_nextitem",    &joybinvright,    NULL, KEY_ZR },
+    { "Mission",         "n3ds_bind_mission",     NULL,             &key_mission, 0 },
+#else
+    { "Fire",            "n3ds_bind_fire",        &joybfire,        NULL, KEY_R | KEY_ZR },
+    { "Use / Open",      "n3ds_bind_use",         &joybuse,         NULL, KEY_A },
+    { "Run",             "n3ds_bind_run",         &joybspeed,       NULL, KEY_B | KEY_ZL },
+    { "Strafe",          "n3ds_bind_strafe",      &joybstrafe,      NULL, KEY_L },
+    { "Previous Weapon", "n3ds_bind_prevweapon",  &joybprevweapon,  NULL, KEY_Y },
+    { "Next Weapon",     "n3ds_bind_nextweapon",  &joybnextweapon,  NULL, KEY_X },
+    { "Automap",         "n3ds_bind_automap",     &joybautomap,     NULL, KEY_SELECT },
+    { "Jump",            "n3ds_bind_jump",        &joybjump,        NULL, 0 },
+    { "Strafe Left",     "n3ds_bind_strafeleft",  &joybstrafeleft,  NULL, 0 },
+    { "Strafe Right",    "n3ds_bind_straferight", &joybstraferight, NULL, 0 },
+#endif
 };
 
 int n3ds_bindings[N3DS_NUM_ACTIONS];
@@ -610,15 +629,19 @@ void N3DS_InitControls(void)
     };
     int i;
 
-    for (i = 0; i < N3DS_NUM_ACTIONS; ++i)
-    {
-        *n3ds_actions[i].joyb = i;
-        n3ds_bindings[i] &= BINDABLE_KEYS;
-    }
-
     for (i = 0; i < arrlen(other_buttons); ++i)
     {
         *other_buttons[i] = -1;
+    }
+
+    for (i = 0; i < N3DS_NUM_ACTIONS; ++i)
+    {
+        if (n3ds_actions[i].joyb != NULL)
+        {
+            *n3ds_actions[i].joyb = i;
+        }
+
+        n3ds_bindings[i] &= BINDABLE_KEYS;
     }
 
     joybmenu = N3DS_JOY_START;
@@ -742,7 +765,26 @@ static void N3DS_UpdateJoystick(void)
 
     for (i = 0; i < N3DS_NUM_ACTIONS; ++i)
     {
-        if ((held & n3ds_bindings[i]) != 0)
+        const boolean on = (held & n3ds_bindings[i]) != 0;
+
+        if (n3ds_actions[i].key != NULL)
+        {
+            // Actions with no joystick button press their key.
+            static boolean was_on[N3DS_NUM_ACTIONS];
+
+            if (on != was_on[i])
+            {
+                event_t key_ev;
+
+                key_ev.type = on ? ev_keydown : ev_keyup;
+                key_ev.data1 = *n3ds_actions[i].key;
+                key_ev.data2 = 0;
+                key_ev.data3 = 0;
+                D_PostEvent(&key_ev);
+                was_on[i] = on;
+            }
+        }
+        else if (on)
         {
             ev.data1 |= 1 << i;
         }

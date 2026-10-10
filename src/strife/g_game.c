@@ -70,6 +70,10 @@
 
 #include "g_game.h"
 
+#ifdef __3DS__
+#include "n3ds.h"
+#endif
+
 
 #define SAVEGAMESIZE	0x2c000
 
@@ -2234,7 +2238,13 @@ void G_DoSaveGame (char *path)
     // This prevents an existing savegame from being overwritten by 
     // a corrupted one, or if a savegame buffer overrun occurs.
 
+#ifdef __3DS__
+    // [3DS] Written over the old savegame: on the SD card, writing a new
+    // file sometimes takes seconds (and Strife saves at every map change).
+    save_stream = N3DS_OpenRewrite(savegame_file);
+#else
     save_stream = M_fopen(temp_savegame_file, "wb");
+#endif
 
     if (save_stream == NULL)
     {
@@ -2269,6 +2279,9 @@ void G_DoSaveGame (char *path)
     
     // Finish up, close the savegame file.
 
+#ifdef __3DS__
+    N3DS_CloseRewrite(save_stream);
+#else
     fclose(save_stream);
 
     // Now rename the temporary savegame file to the actual savegame
@@ -2276,6 +2289,7 @@ void G_DoSaveGame (char *path)
 
     M_remove(savegame_file);
     M_rename(temp_savegame_file, savegame_file);
+#endif
     
     // haleyjd: free the savegame_file path
     Z_Free(savegame_file);

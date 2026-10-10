@@ -67,6 +67,10 @@
 #include "m_crispy.h" // [crispy] Crispness menu
 #include "v_trans.h" // [crispy] color translation and color string tables
 
+#ifdef __3DS__
+#include "n3ds.h"
+#endif
+
 
 void M_QuitStrife(int);
 
@@ -85,7 +89,11 @@ int			mouseSensitivity_y = 5; // [crispy] mouse sensitivity menu
 
 // Blocky mode, has default, 0 = high, 1 = normal
 int			detailLevel = 0;
+#ifdef __3DS__
+int			screenblocks = 11; // [3DS] full view: the status bar is below
+#else
 int			screenblocks = 10; // [STRIFE] default 10, not 9
+#endif
 
 // temp for screenblocks (0-9)
 int			screenSize;
@@ -250,6 +258,11 @@ static void M_CrispnessCur(int choice);
 static void M_CrispnessNext(int choice);
 static void M_CrispnessPrev(int choice);
 static void M_DrawCrispness1(void);
+#ifdef __3DS__
+static void M_DrawN3DS(void);
+static void M_DrawN3DSButtons(void);
+static void M_N3DSToggleSmooth(int choice);
+#endif
 static void M_DrawCrispness2(void);
 static void M_DrawCrispness3(void);
 
@@ -452,11 +465,20 @@ static menuitem_t Crispness1Menu[] =
 {
     {-1, "", 0, '\0'},
     {2, "", M_CrispyToggleHires, 'h'},
+#ifdef __3DS__
+    // [3DS] Nothing to change (see M_DrawCrispness1).
+    {-1, "", 0, '\0'},
+    {2, "", M_N3DSToggleSmooth, 's'},
+    {2, "", M_CrispyToggleUncapped, 'u'},
+    {-1, "", 0, '\0'},
+    {-1, "", 0, '\0'},
+#else
     {2, "", M_CrispyToggleWidescreen, 'w'},
     {2, "", M_CrispyToggleSmoothScaling, 's'},
     {2, "", M_CrispyToggleUncapped, 'u'},
     {3, "", M_CrispyToggleFpsLimit, 'f'},
     {2, "", M_CrispyToggleVsync, 'v'},
+#endif
     {-1, "", 0, '\0'},
     {-1, "", 0, '\0'},
     {2, "", M_CrispyToggleSmoothLighting, 's'},
@@ -572,8 +594,174 @@ static menu_t Crispness3Def =
     1
 };
 
+#ifdef __3DS__
+// [3DS] Options of the Nintendo 3DS: the first page of the Crispness menu.
+enum
+{
+    n3ds_sep_bottom,
+    n3ds_map,
+    n3ds_hud,
+    n3ds_fps,
+    n3ds_sep_bottom_,
+
+    n3ds_sep_top,
+    n3ds_smooth,
+    n3ds_sep_top_,
+
+    n3ds_sep_controls,
+    n3ds_dualstick,
+    n3ds_run,
+    n3ds_touchturn,
+    n3ds_touchspeed,
+    n3ds_sep_controls_,
+
+    n3ds_next,
+    n3ds_prev,
+    n3ds_end
+} n3ds_e;
+
+static void M_N3DSToggleMap(int choice)
+{
+    n3ds_bottom_map = !n3ds_bottom_map;
+}
+
+// With the map: above or below it. Without: top, middle or bottom.
+static void M_N3DSToggleHud(int choice)
+{
+    if (n3ds_bottom_map)
+    {
+        n3ds_hud_position = n3ds_hud_position == 2 ? 0 : 2;
+    }
+    else
+    {
+        n3ds_hud_position = (n3ds_hud_position + (choice ? 1 : 2)) % 3;
+    }
+}
+
+static void M_N3DSToggleFps(int choice)
+{
+    n3ds_show_fps = !n3ds_show_fps;
+}
+
+static void M_N3DSToggleSmooth(int choice)
+{
+    n3ds_smooth_scaling = !n3ds_smooth_scaling;
+}
+
+static void M_N3DSToggleDualStick(int choice)
+{
+    n3ds_dual_stick = !n3ds_dual_stick;
+}
+
+static void M_N3DSToggleRun(int choice)
+{
+    n3ds_run_mode = (n3ds_run_mode + (choice ? 1 : N3DS_NUM_RUN_MODES - 1))
+                  % N3DS_NUM_RUN_MODES;
+}
+
+static void M_N3DSToggleTouchTurn(int choice)
+{
+    n3ds_touch_turn = !n3ds_touch_turn;
+}
+
+static void M_N3DSChangeTouchSpeed(int choice)
+{
+    n3ds_touch_speed = BETWEEN(1, 10, n3ds_touch_speed + (choice ? 1 : -1));
+}
+
+static menuitem_t N3DSMenu[] =
+{
+    {-1, "", 0, '\0'},
+    {2, "", M_N3DSToggleMap, 'm'},
+    {2, "", M_N3DSToggleHud, 's'},
+    {2, "", M_N3DSToggleFps, 'f'},
+    {-1, "", 0, '\0'},
+    {-1, "", 0, '\0'},
+    {2, "", M_N3DSToggleSmooth, 's'},
+    {-1, "", 0, '\0'},
+    {-1, "", 0, '\0'},
+    {2, "", M_N3DSToggleDualStick, 'd'},
+    {2, "", M_N3DSToggleRun, 'r'},
+    {2, "", M_N3DSToggleTouchTurn, 't'},
+    {2, "", M_N3DSChangeTouchSpeed, 's'},
+    {-1, "", 0, '\0'},
+    {1, "", M_CrispnessNext, 'n'},
+    {1, "", M_CrispnessPrev, 'p'},
+};
+
+static menu_t N3DSDef =
+{
+    n3ds_end,
+    &OptionsDef,
+    N3DSMenu,
+    M_DrawN3DS,
+    48, 22,
+    1
+};
+
+// [3DS] The buttons of each action: A on a row waits for a button.
+enum
+{
+    buttons_first,
+    buttons_last = buttons_first + N3DS_NUM_ACTIONS - 1,
+    buttons_reset,
+    buttons_next,
+    buttons_prev,
+    buttons_end
+} buttons_e;
+
+// The action waiting for a button, or -1.
+static int n3ds_binding = -1;
+
+static void M_N3DSBindAction(int choice)
+{
+    n3ds_binding = choice - buttons_first;
+    N3DS_TakeNewKey(); // forget earlier presses
+}
+
+static void M_N3DSResetBindings(int choice)
+{
+    N3DS_ResetBindings();
+}
+
+static menuitem_t N3DSButtonsMenu[] =
+{
+    {1, "", M_N3DSBindAction, 'f'},
+    {1, "", M_N3DSBindAction, 'u'},
+    {1, "", M_N3DSBindAction, 'r'},
+    {1, "", M_N3DSBindAction, 's'},
+    {1, "", M_N3DSBindAction, 'p'},
+    {1, "", M_N3DSBindAction, 'n'},
+    {1, "", M_N3DSBindAction, 'a'},
+    {1, "", M_N3DSBindAction, 'j'},
+    {1, "", M_N3DSBindAction, 'l'},
+    {1, "", M_N3DSBindAction, 'r'},
+    {1, "", M_N3DSBindAction, 'i'},
+    {1, "", M_N3DSBindAction, 'p'},
+    {1, "", M_N3DSBindAction, 'n'},
+    {1, "", M_N3DSBindAction, 'm'},
+    {1, "", M_N3DSResetBindings, 'd'},
+    {1, "", M_CrispnessNext, 'n'},
+    {1, "", M_CrispnessPrev, 'p'},
+};
+
+static menu_t N3DSButtonsDef =
+{
+    buttons_end,
+    &OptionsDef,
+    N3DSButtonsMenu,
+    M_DrawN3DSButtons,
+    48, 22,
+    0
+};
+#endif
+
 static menu_t *CrispnessMenus[] =
 {
+#ifdef __3DS__
+    &N3DSDef,
+    &N3DSButtonsDef,
+#endif
     &Crispness1Def,
     &Crispness2Def,
     &Crispness3Def,
@@ -1477,6 +1665,7 @@ static void M_DrawCrispnessMultiItem(int y, const char *item, multiitem_t *multi
     M_WriteText(currentMenu->x, currentMenu->y + CRISPY_LINEHEIGHT * y, crispy_menu_text);
 }
 
+#ifndef __3DS__ // [3DS] only for the framerate limit
 static void M_DrawCrispnessNumericItem(int y, const char *item, int feat, const char *zero, boolean cond, const char *disabled)
 {
     char number[NUMERIC_ENTRY_NUMDIGITS + 2];
@@ -1497,6 +1686,7 @@ static void M_DrawCrispnessNumericItem(int y, const char *item, int feat, const 
                cond ? (feat || numeric_enter ? number : zero) : disabled);
     M_WriteText(currentMenu->x, currentMenu->y + CRISPY_LINEHEIGHT * y, crispy_menu_text);
 }
+#endif
 
 static void M_DrawCrispnessGoto(int y, const char *item)
 {
@@ -1505,6 +1695,100 @@ static void M_DrawCrispnessGoto(int y, const char *item)
     M_WriteText(currentMenu->x, currentMenu->y + CRISPY_LINEHEIGHT * y, crispy_menu_text);
 }
 
+#ifdef __3DS__
+static void M_DrawN3DSChoice(int y, const char *item, const char *value, boolean cond)
+{
+    M_snprintf(crispy_menu_text, sizeof(crispy_menu_text),
+               "%s%s: %s%s", cond ? crstr[CR_NONE] : crstr[CR_DARK], item,
+               cond ? crstr[CR_GREEN] : crstr[CR_DARK], value);
+    M_WriteText(currentMenu->x, currentMenu->y + CRISPY_LINEHEIGHT * y, crispy_menu_text);
+}
+
+static void M_DrawN3DS(void)
+{
+    static const char *const positions[] = {"Top", "Middle", "Bottom"};
+    static const char *const run_modes[N3DS_NUM_RUN_MODES] =
+        {"Hold Button", "Press Once", "Stick All the Way"};
+    char speed[8];
+    const char *hud;
+
+    if (n3ds_bottom_map)
+    {
+        hud = n3ds_hud_position == 2 ? "Below the Map" : "Above the Map";
+    }
+    else
+    {
+        hud = positions[n3ds_hud_position % 3];
+    }
+
+    M_DrawCrispnessBackground();
+
+    M_DrawCrispnessHeader("Nintendo 3DS");
+
+    M_DrawCrispnessSeparator(n3ds_sep_bottom, "Bottom Screen");
+    M_DrawCrispnessItem(n3ds_map, "Automap", n3ds_bottom_map, true);
+    // The status bar is there with the full view (screen size 11).
+    M_DrawN3DSChoice(n3ds_hud, "Status Bar", hud, screenblocks == 11);
+    M_DrawCrispnessItem(n3ds_fps, "Frame Counter", n3ds_show_fps, true);
+
+    M_DrawCrispnessSeparator(n3ds_sep_top, "Top Screen");
+    M_DrawCrispnessItem(n3ds_smooth, "Smooth Pixel Scaling", n3ds_smooth_scaling, true);
+
+    M_DrawCrispnessSeparator(n3ds_sep_controls, "Controls");
+    M_DrawN3DSChoice(n3ds_dualstick, "C-Stick", n3ds_dual_stick ? "Turn" : "Strafe", true);
+    M_DrawN3DSChoice(n3ds_run, "Run", run_modes[n3ds_run_mode % N3DS_NUM_RUN_MODES], true);
+    M_DrawCrispnessItem(n3ds_touchturn, "Turn with Touch Screen", n3ds_touch_turn, true);
+    M_snprintf(speed, sizeof(speed), "%d", n3ds_touch_speed);
+    M_DrawN3DSChoice(n3ds_touchspeed, "Touch Turning Speed", speed, n3ds_touch_turn);
+
+    M_DrawCrispnessGoto(n3ds_next, "Next Page >");
+    M_DrawCrispnessGoto(n3ds_prev, "< Last Page");
+
+    dp_translation = NULL;
+}
+
+static void M_DrawN3DSButtons(void)
+{
+    char keys[32];
+    int i;
+
+    M_DrawCrispnessBackground();
+
+    M_DrawCrispnessHeader("Buttons");
+
+    for (i = 0; i < N3DS_NUM_ACTIONS; ++i)
+    {
+        if (i == n3ds_binding)
+        {
+            M_StringCopy(keys, "Press a button", sizeof(keys));
+        }
+        else
+        {
+            N3DS_DescribeBinding(i, keys, sizeof(keys));
+        }
+
+        M_snprintf(crispy_menu_text, sizeof(crispy_menu_text), "%s%s: %s%s",
+                   crstr[CR_NONE], n3ds_actions[i].name,
+                   i == n3ds_binding ? crstr[CR_GOLD] : crstr[CR_GREEN], keys);
+        M_WriteText(currentMenu->x, currentMenu->y + CRISPY_LINEHEIGHT * (buttons_first + i),
+                    crispy_menu_text);
+    }
+
+    M_DrawCrispnessGoto(buttons_reset, "Reset to Defaults");
+    M_DrawCrispnessGoto(buttons_next, "Next Page >");
+    M_DrawCrispnessGoto(buttons_prev, "< Prev Page");
+
+    // How it works.
+    M_snprintf(crispy_menu_text, sizeof(crispy_menu_text), "%s%s", crstr[CR_GRAY],
+               n3ds_binding >= 0 ? "Again to remove it. START: cancel"
+                                 : "A: change   START, D-pad: fixed");
+    M_WriteText(ORIGWIDTH/2 - M_StringWidth(crispy_menu_text) / 2, 192,
+                crispy_menu_text);
+
+    dp_translation = NULL;
+}
+#endif
+
 static void M_DrawCrispness1(void)
 {
     M_DrawCrispnessBackground();
@@ -1512,19 +1796,34 @@ static void M_DrawCrispness1(void)
     M_DrawCrispnessHeader("Crispness 1/3");
 
     M_DrawCrispnessSeparator(crispness_sep_rendering, "Rendering");
+#ifdef __3DS__
+    // [3DS] The top screen sets the aspect ratio, the frame rate follows
+    // it, and the smooth scaling is also on the Nintendo 3DS page.
+    M_DrawCrispnessItem(crispness_hires, "High Resolution Rendering", crispy->hires, N3DS_IsNew3DS());
+    M_DrawN3DSChoice(crispness_widescreen, "Aspect Ratio", "Match Screen", false);
+    M_DrawCrispnessItem(crispness_smoothscaling, "Smooth Pixel Scaling", n3ds_smooth_scaling, true);
+    M_DrawCrispnessItem(crispness_uncapped, "Uncapped Framerate", crispy->uncapped, true);
+    M_DrawN3DSChoice(crispness_fpslimit, "Framerate Limit", "60", false);
+    M_DrawN3DSChoice(crispness_vsync, "Enable VSync", "On", false);
+#else
     M_DrawCrispnessItem(crispness_hires, "High Resolution Rendering", crispy->hires, true);
     M_DrawCrispnessMultiItem(crispness_widescreen, "Aspect Ratio", multiitem_widescreen, crispy->widescreen, aspect_ratio_correct == 1);
     M_DrawCrispnessItem(crispness_smoothscaling, "Smooth Pixel Scaling", smooth_pixel_scaling, !force_software_renderer);
     M_DrawCrispnessItem(crispness_uncapped, "Uncapped Framerate", crispy->uncapped, true);
     M_DrawCrispnessNumericItem(crispness_fpslimit, "Framerate Limit", crispy->fpslimit, "None", crispy->uncapped, "35");
     M_DrawCrispnessItem(crispness_vsync, "Enable VSync", crispy->vsync, !force_software_renderer);
+#endif
 
     M_DrawCrispnessSeparator(crispness_sep_visual, "Visual");
     M_DrawCrispnessItem(crispness_smoothlight, "Smooth Diminishing Lighting", crispy->smoothlight, true);
     M_DrawCrispnessMultiItem(crispness_translucency, "Translucency", multiitem_translucency, crispy->translucency, true);
 
     M_DrawCrispnessGoto(crispness1_next, "Next Page >");
+#ifdef __3DS__
+    M_DrawCrispnessGoto(crispness1_prev, "< Prev Page");
+#else
     M_DrawCrispnessGoto(crispness1_prev, "< Last Page");
+#endif
 
     dp_translation = NULL;
 }
@@ -2340,6 +2639,48 @@ boolean M_Responder (event_t* ev)
     ch = 0;
     key = -1;
 
+#ifdef __3DS__
+    // The buttons act once per press: held, START opened and closed the menu
+    // over and over (the D-pad and the Circle Pad still repeat).
+    static int n3ds_last_buttons = 0;
+    int n3ds_pressed = 0;
+
+    if (ev->type == ev_joystick)
+    {
+        n3ds_pressed = ev->data1 & ~n3ds_last_buttons;
+        n3ds_last_buttons = ev->data1;
+    }
+
+    // Waiting for the button of an action: nothing else happens meanwhile.
+    if (n3ds_binding >= 0)
+    {
+        if (!menuactive || currentMenu != &N3DSButtonsDef)
+        {
+            n3ds_binding = -1;
+        }
+        else
+        {
+            if (ev->type == ev_joystick)
+            {
+                const int new_key = N3DS_TakeNewKey();
+
+                if (new_key != 0)
+                {
+                    if (new_key > 0)
+                    {
+                        N3DS_BindKey(n3ds_binding, new_key);
+                    }
+
+                    n3ds_binding = -1;
+                    S_StartSound(NULL, sfx_swtchn);
+                }
+            }
+
+            return ev->type != ev_quit;
+        }
+    }
+#endif
+
     if (ev->type == ev_joystick && joywait < I_GetTime())
     {
         if (JOY_GET_DPAD(ev->data6) != JOY_DIR_NONE)
@@ -2377,9 +2718,19 @@ boolean M_Responder (event_t* ev)
         }
 
 #define JOY_BUTTON_MAPPED(x) ((x) >= 0)
+#ifdef __3DS__
+#define JOY_BUTTON_PRESSED(x) (JOY_BUTTON_MAPPED(x) && (n3ds_pressed & (1 << (x))) != 0)
+// Nintendo layout in the menus and dialogs: A accepts and B goes back,
+// whatever the buttons do in the game (where they do nothing here).
+#define JOY_MENU_FORWARD (menuactive ? N3DS_JOY_A : -1)
+#define JOY_MENU_BACK (menuactive ? N3DS_JOY_B : -1)
+#else
 #define JOY_BUTTON_PRESSED(x) (JOY_BUTTON_MAPPED(x) && (ev->data1 & (1 << (x))) != 0)
+#define JOY_MENU_FORWARD joybfire
+#define JOY_MENU_BACK joybuse
+#endif
 
-        if (JOY_BUTTON_PRESSED(joybfire))
+        if (JOY_BUTTON_PRESSED(JOY_MENU_FORWARD))
         {
             // Simulate a 'Y' keypress when Doom show a Y/N dialog with Fire button.
             if (messageToPrint && messageNeedsInput)
@@ -2396,7 +2747,7 @@ boolean M_Responder (event_t* ev)
             joystick_fire_countdown = 5;
             }
         }
-        if (JOY_BUTTON_PRESSED(joybuse))
+        if (JOY_BUTTON_PRESSED(JOY_MENU_BACK))
         {
             // Simulate a 'N' keypress when Doom show a Y/N dialog with Use button.
             if (messageToPrint && messageNeedsInput)
@@ -2978,6 +3329,17 @@ boolean M_Responder (event_t* ev)
             itemOn = currentMenu->lastOn;
             S_StartSound(NULL, sfx_swtchn);
         }
+#ifdef __3DS__
+        // [3DS] B on the main menu (or in a dialog) closes it, as START does.
+        else
+        {
+            if(menuindialog)
+                P_DialogDoChoice(-1);
+
+            M_ClearMenus (0);
+            S_StartSound(NULL, sfx_mtalht);
+        }
+#endif
         return true;
     }
     // [crispy] next/prev Crispness menu

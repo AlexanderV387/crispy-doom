@@ -292,8 +292,14 @@ else()
     target_link_libraries(mus2mid SDL2::SDL2)
 endif()
 
-# Nintendo 3DS: .3dsx for the Homebrew Launcher.
+# Nintendo 3DS: .3dsx for the Homebrew Launcher. Each game has its own
+# folder, picker and controls (N3DS_GAME_* in n3ds.h).
 if(NINTENDO_3DS)
+    target_compile_definitions("${PROGRAM_PREFIX}doom" PRIVATE N3DS_GAME_DOOM)
+    target_compile_definitions(doom PRIVATE N3DS_GAME_DOOM)
+    target_compile_definitions("${PROGRAM_PREFIX}strife" PRIVATE N3DS_GAME_STRIFE)
+    target_compile_definitions(strife PRIVATE N3DS_GAME_STRIFE)
+
     ctr_generate_smdh("${CMAKE_CURRENT_BINARY_DIR}/crispy-doom.smdh"
         NAME "Crispy Doom"
         DESCRIPTION "Doom, Doom II, Final Doom and mods"
@@ -302,5 +308,15 @@ if(NINTENDO_3DS)
     )
     ctr_create_3dsx("${PROGRAM_PREFIX}doom"
         SMDH "${CMAKE_CURRENT_BINARY_DIR}/crispy-doom.smdh"
+    )
+
+    ctr_generate_smdh("${CMAKE_CURRENT_BINARY_DIR}/crispy-strife.smdh"
+        NAME "Crispy Strife"
+        DESCRIPTION "Strife: Quest for the Sigil"
+        AUTHOR "AlexanderV387, Fabian Greffrath"
+        ICON "${PROJECT_SOURCE_DIR}/assets/icon.png"
+    )
+    ctr_create_3dsx("${PROGRAM_PREFIX}strife"
+        SMDH "${CMAKE_CURRENT_BINARY_DIR}/crispy-strife.smdh"
     )
 endif()

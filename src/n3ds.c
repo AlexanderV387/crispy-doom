@@ -99,7 +99,7 @@ void N3DS_Init(void)
     // since startup: where startup spends its time. stderr is the same
     // stream (threads inherit it), so their lines do not overwrite each other.
     {
-        const char *path = N3DS_DATA_DIR "crispy-doom-log.txt";
+        const char *path = N3DS_DATA_DIR "crispy-" N3DS_GAME "-log.txt";
         FILE *log = fopen(path, "r+b");
 
         if (log != NULL)
@@ -187,20 +187,13 @@ void N3DS_BindVariables(void)
     M_BindIntVariable("n3ds_touch_speed",    &n3ds_touch_speed);
 
     {
-        static const char *const names[N3DS_NUM_ACTIONS] =
-        {
-            "n3ds_bind_fire", "n3ds_bind_use", "n3ds_bind_run",
-            "n3ds_bind_strafe", "n3ds_bind_prevweapon",
-            "n3ds_bind_nextweapon", "n3ds_bind_automap", "n3ds_bind_jump",
-            "n3ds_bind_strafeleft", "n3ds_bind_straferight",
-        };
         int i;
 
         N3DS_ResetBindings();
 
         for (i = 0; i < N3DS_NUM_ACTIONS; ++i)
         {
-            M_BindIntVariable(names[i], &n3ds_bindings[i]);
+            M_BindIntVariable(n3ds_actions[i].config, &n3ds_bindings[i]);
         }
     }
     M_BindIntVariable("n3ds_config_version", &n3ds_config_version);
@@ -341,6 +334,106 @@ boolean N3DS_TouchReserved(int x, int y)
 {
     return x >= reserved_x && x < reserved_x + reserved_w
         && y >= reserved_y && y < reserved_y + reserved_h;
+}
+
+// ==========================================================================
+// The bottom screen map's zoom buttons, in its lower left corner: "+" above
+// "-". A tap zooms by a quarter; holding a button zooms on, 30 steps a
+// second. Touches there do not turn the view.
+
+#define BUTTON_SIZE 24
+#define BUTTON_X 4
+#define MIN_ZOOM 25
+#define MAX_ZOOM 800
+
+static void MapButtonRows(int map_y, int map_height, int *plus_y, int *minus_y)
+{
+    *minus_y = map_y + map_height - BUTTON_SIZE - 4;
+    *plus_y = *minus_y - BUTTON_SIZE - 4;
+}
+
+int N3DS_UpdateMapZoom(int map_y, int map_height)
+{
+    static int held = 0;
+    int plus_y, minus_y, x, y, direction = 0;
+
+    MapButtonRows(map_y, map_height, &plus_y, &minus_y);
+    N3DS_ReserveTouch(0, plus_y - 4, BUTTON_X + BUTTON_SIZE + 8,
+                      minus_y + BUTTON_SIZE + 4 - (plus_y - 4));
+
+    if (N3DS_GetTouch(&x, &y) && x < BUTTON_X + BUTTON_SIZE + 8)
+    {
+        if (y >= plus_y - 4 && y < plus_y + BUTTON_SIZE + 2)
+        {
+            direction = 1;
+        }
+        else if (y >= minus_y - 2 && y < minus_y + BUTTON_SIZE + 4)
+        {
+            direction = -1;
+        }
+    }
+
+    if (direction == 0)
+    {
+        held = 0;
+    }
+    else
+    {
+        if (held == 0 || held >= 10)
+        {
+            const int step = held == 0 ? 125 : 104;
+
+            if (direction > 0)
+            {
+                n3ds_map_zoom = n3ds_map_zoom * step / 100;
+            }
+            else
+            {
+                n3ds_map_zoom = n3ds_map_zoom * 100 / step;
+            }
+        }
+
+        ++held;
+    }
+
+    n3ds_map_zoom = n3ds_map_zoom < MIN_ZOOM ? MIN_ZOOM
+                  : n3ds_map_zoom > MAX_ZOOM ? MAX_ZOOM : n3ds_map_zoom;
+    return n3ds_map_zoom;
+}
+
+static void FillRect(pixel_t *screen, int x, int y, int w, int h, int color)
+{
+    int i;
+
+    for (i = y; i < y + h; ++i)
+    {
+        memset(screen + i * N3DS_BOTTOM_WIDTH + x, color, w * sizeof(*screen));
+    }
+}
+
+static void DrawMapButton(pixel_t *screen, int y, boolean plus, int gray,
+                          int black, int white)
+{
+    const int center = BUTTON_SIZE / 2;
+
+    FillRect(screen, BUTTON_X, y, BUTTON_SIZE, BUTTON_SIZE, gray);
+    FillRect(screen, BUTTON_X + 2, y + 2, BUTTON_SIZE - 4, BUTTON_SIZE - 4, black);
+    FillRect(screen, BUTTON_X + 5, y + center - 1, BUTTON_SIZE - 10, 2, white);
+
+    if (plus)
+    {
+        FillRect(screen, BUTTON_X + center - 1, y + 5, 2, BUTTON_SIZE - 10, white);
+    }
+}
+
+void N3DS_DrawMapButtons(pixel_t *screen, int map_y, int map_height,
+                         int gray, int black, int white)
+{
+    int plus_y, minus_y;
+
+    MapButtonRows(map_y, map_height, &plus_y, &minus_y);
+    DrawMapButton(screen, plus_y, true, gray, black, white);
+    DrawMapButton(screen, minus_y, false, gray, black, white);
 }
 
 // ==========================================================================
@@ -833,6 +926,9 @@ void N3DS_Present(const pixel_t *buffer, int width, int height,
 
 static const struct { const char *file, *name; } iwad_names[] =
 {
+#if defined(N3DS_GAME_STRIFE)
+    { "strife1.wad",   "Strife: Quest for the Sigil" },
+#else
     { "doom.wad",      "The Ultimate Doom" },
     { "doom1.wad",     "Doom (shareware)" },
     { "doom2.wad",     "Doom II" },
@@ -846,7 +942,17 @@ static const struct { const char *file, *name; } iwad_names[] =
     { "hacx.wad",      "HACX" },
     { "rekkrsa.wad",   "REKKR" },
     { "rekkrsl.wad",   "REKKR: Sunken Land" },
+#endif
 };
+
+#if defined(N3DS_GAME_STRIFE)
+#define IWAD_HELP "  strife1.wad (Strife: Veteran Edition\n" \
+                  "  on Steam and GOG includes it)\n\n"
+#else
+#define IWAD_HELP "  doom.wad, doom1.wad (shareware), doom2.wad,\n" \
+                  "  plutonia.wad, tnt.wad, freedoom1.wad,\n" \
+                  "  freedoom2.wad...\n\n"
+#endif
 
 #define MODS_FOLDER "mods"
 #define MAX_MODS 128
@@ -957,7 +1063,7 @@ static int ChooseItem(const char *title, const char *const *items, int count,
             }
 
             ConsoleClear();
-            ConsolePrintf("\n  \x1b[31mCRISPY DOOM 3DS\x1b[0m\n\n  %s\n\n", title);
+            ConsolePrintf("\n  \x1b[31m" N3DS_TITLE "\x1b[0m\n\n  %s\n\n", title);
             ConsolePrintf("  %s\n", first > 0 ? "  ..." : "");
 
             for (i = first; i < count && i < first + VISIBLE_ITEMS; ++i)
@@ -982,12 +1088,10 @@ static void ShowNoGame(void)
     boolean released = false;
 
     ConsoleClear();
-    ConsolePrintf("\n  \x1b[31mCRISPY DOOM 3DS\x1b[0m\n\n"
+    ConsolePrintf("\n  \x1b[31m" N3DS_TITLE "\x1b[0m\n\n"
            "  No game data found. Copy an IWAD to\n"
            "  " N3DS_DATA_DIR "\n\n"
-           "  doom.wad, doom1.wad (shareware), doom2.wad,\n"
-           "  plutonia.wad, tnt.wad, freedoom1.wad,\n"
-           "  freedoom2.wad...\n\n"
+           IWAD_HELP
            "  Mods (.wad, .deh) go in\n"
            "  " N3DS_DATA_DIR MODS_FOLDER "/\n\n"
            "  START: exit\n");
@@ -1187,7 +1291,7 @@ void N3DS_ShowError(const char *message)
     gfxInitDefault();
     consoleInit(GFX_TOP, NULL);
 
-    ConsolePrintf("\n Crispy Doom error:\n\n%s\n\n START: exit\n",
+    ConsolePrintf("\n " N3DS_TITLE ": error\n\n%s\n\n START: exit\n",
            message != NULL ? message : "");
 
     while (aptMainLoop())

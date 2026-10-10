@@ -462,7 +462,12 @@ boolean ST_Responder(event_t* ev)
         {
             st_displaypopup = true;
             // [crispy] resize only when using original fullscreen HUD
+            // [3DS] Not with the status bar on the bottom screen.
+#ifndef __3DS__
             if(screenblocks == 11)
+#else
+            if(false)
+#endif
             {
                 M_SizeDisplay(false);
                 st_dosizedisplay = true;
@@ -1586,6 +1591,12 @@ boolean ST_DrawExternal(void)
     {
         ST_drawCrispyHUD();
     }
+#ifdef __3DS__
+    else if (screenblocks == 11)
+    {
+        // [3DS] The status bar is on the bottom screen.
+    }
+#endif
     else // [crispy] draw original fullscreen HUD
     {
         ammotype_t ammo;
