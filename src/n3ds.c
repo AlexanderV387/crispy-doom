@@ -39,6 +39,13 @@ u32 __stacksize__ = 1024 * 1024;
 // The log: each line with the time since startup, written at once (so it
 // survives a hang).
 static FILE *log_file;
+
+// stdout before the log took its place: libctru's text console writes
+// there (the game picker, fatal errors).
+static FILE *console;
+
+#define ConsolePrintf(...) (fprintf(console, __VA_ARGS__), fflush(console))
+#define ConsoleClear() ConsolePrintf("\x1b[2J")
 static u64 log_start;
 
 static int LogWrite(void *cookie, const char *buffer, _READ_WRITE_BUFSIZE_TYPE size)
@@ -72,6 +79,8 @@ static void RestoreBottomBacklight(void);
 
 void N3DS_Init(void)
 {
+    console = stdout;
+
     osSetSpeedupEnable(true);
 
     mkdir("sdmc:/3ds", 0777);
@@ -124,6 +133,7 @@ void N3DS_Init(void)
             if (stream != NULL)
             {
                 setvbuf(stream, NULL, _IOLBF, 0);
+                console = stdout;
                 stdout = stream;
                 stderr = stream;
             }
@@ -659,6 +669,7 @@ static void StartPresenting(void)
 {
     s32 priority = 0x30;
     Result result;
+    int core;
 
     LightEvent_Init(&frame_ready, RESET_ONESHOT);
     LightEvent_Init(&frame_done, RESET_STICKY);
@@ -674,11 +685,27 @@ static void StartPresenting(void)
     result = APT_SetAppCpuTimeLimit(80);
     present_thread = threadCreate(PresentThread, NULL, 32 * 1024, priority,
                                   1, false);
+    core = 1;
+
+    // Otherwise the third core, with the audio thread.
+    if (present_thread == NULL)
+    {
+        present_thread = threadCreate(PresentThread, NULL, 32 * 1024, priority,
+                                      2, false);
+        core = 2;
+    }
 
     // A .cia needs core 1 in its affinity mask (tools/3ds/app.rsf).
-    printf("N3DS_Present: composing the screens on %s (time limit: %08lx)\n",
-           present_thread != NULL ? "core 1" : "the game's core",
-           (unsigned long) result);
+    if (present_thread != NULL)
+    {
+        printf("N3DS_Present: composing the screens on core %d (time limit: %08lx)\n",
+               core, (unsigned long) result);
+    }
+    else
+    {
+        printf("N3DS_Present: composing the screens on the game's core (time limit: %08lx)\n",
+               (unsigned long) result);
+    }
 }
 
 void N3DS_StopPresenting(void)
@@ -915,18 +942,18 @@ static int ChooseItem(const char *title, const char *const *items, int count,
                 first = selected - VISIBLE_ITEMS + 1;
             }
 
-            consoleClear();
-            printf("\n  \x1b[31mCRISPY DOOM 3DS\x1b[0m\n\n  %s\n\n", title);
-            printf("  %s\n", first > 0 ? "  ..." : "");
+            ConsoleClear();
+            ConsolePrintf("\n  \x1b[31mCRISPY DOOM 3DS\x1b[0m\n\n  %s\n\n", title);
+            ConsolePrintf("  %s\n", first > 0 ? "  ..." : "");
 
             for (i = first; i < count && i < first + VISIBLE_ITEMS; ++i)
             {
-                printf(i == selected ? "  \x1b[33m> %.44s\x1b[0m\n\n"
+                ConsolePrintf(i == selected ? "  \x1b[33m> %.44s\x1b[0m\n\n"
                                      : "    %.44s\n\n", items[i]);
             }
 
-            printf("  %s\n", i < count ? "  ..." : "");
-            printf("\n  %s\n", help);
+            ConsolePrintf("  %s\n", i < count ? "  ..." : "");
+            ConsolePrintf("\n  %s\n", help);
             drawn = selected;
         }
 
@@ -940,8 +967,8 @@ static void ShowNoGame(void)
 {
     boolean released = false;
 
-    consoleClear();
-    printf("\n  \x1b[31mCRISPY DOOM 3DS\x1b[0m\n\n"
+    ConsoleClear();
+    ConsolePrintf("\n  \x1b[31mCRISPY DOOM 3DS\x1b[0m\n\n"
            "  No game data found. Copy an IWAD to\n"
            "  " N3DS_DATA_DIR "\n\n"
            "  doom.wad, doom1.wad (shareware), doom2.wad,\n"
@@ -1146,7 +1173,7 @@ void N3DS_ShowError(const char *message)
     gfxInitDefault();
     consoleInit(GFX_TOP, NULL);
 
-    printf("\n Crispy Doom error:\n\n%s\n\n START: exit\n",
+    ConsolePrintf("\n Crispy Doom error:\n\n%s\n\n START: exit\n",
            message != NULL ? message : "");
 
     while (aptMainLoop())
