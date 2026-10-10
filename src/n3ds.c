@@ -180,7 +180,7 @@ boolean N3DS_IsClosing(void)
 
 int n3ds_bottom_map = 1;
 int n3ds_hud_position = 0;
-int n3ds_smooth_scaling = 1;
+int n3ds_smooth_scaling = 0; // faster, and sharp
 int n3ds_show_fps = 0;
 int n3ds_map_zoom = 150;
 int n3ds_config_version = 0;

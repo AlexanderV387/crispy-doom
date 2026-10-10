@@ -1688,6 +1688,13 @@ void D_DoomMain (void)
         n3ds_config_version = 2;
     }
 
+    // Blending the rows cost frames.
+    if (n3ds_config_version < 3)
+    {
+        n3ds_smooth_scaling = 0;
+        n3ds_config_version = 3;
+    }
+
     N3DS_InitControls();
     N3DS_InGame = N3DS_DoomInGame;
 

@@ -1887,7 +1887,13 @@ void D_DoomMain (void)
     {
         runcentering = 0;
     }
-    n3ds_config_version = 3;
+
+    // Blending the rows cost frames.
+    if (n3ds_config_version < 4)
+    {
+        n3ds_smooth_scaling = 0;
+    }
+    n3ds_config_version = 4;
 
     // The Old 3DS draws at a third of the speed: never in high resolution.
     if (!N3DS_IsNew3DS())
