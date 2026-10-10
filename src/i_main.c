@@ -54,6 +54,11 @@ int main(int argc, char **argv)
         argc = 1;
         argv = n3ds_argv;
     }
+
+    if (!N3DS_PickGame(&argc, &argv))
+    {
+        return 0;
+    }
 #endif
 
     // save arguments

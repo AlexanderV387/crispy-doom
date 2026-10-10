@@ -296,8 +296,9 @@ endif()
 if(NINTENDO_3DS)
     ctr_generate_smdh("${CMAKE_CURRENT_BINARY_DIR}/crispy-doom.smdh"
         NAME "Crispy Doom"
-        DESCRIPTION "Doom, Heretic, Hexen and Strife"
+        DESCRIPTION "Doom, Doom II, Final Doom and mods"
         AUTHOR "AlexanderV387, Fabian Greffrath"
+        ICON "${PROJECT_SOURCE_DIR}/assets/icon.png"
     )
     ctr_create_3dsx("${PROGRAM_PREFIX}doom"
         SMDH "${CMAKE_CURRENT_BINARY_DIR}/crispy-doom.smdh"

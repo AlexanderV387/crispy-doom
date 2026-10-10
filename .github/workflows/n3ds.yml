@@ -1,0 +1,91 @@
+name: n3ds
+
+on:
+  push:
+    branches: [n3ds]
+  pull_request:
+    branches: [n3ds]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: devkitpro/devkitarm:latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # SDL2 and SDL2_mixer for the 3DS, built from source with the patches
+      # in tools/3ds/patches (devkitPro has no SDL2 packages for the 3DS).
+      - name: Build SDL2 and SDL2_mixer
+        run: sh tools/3ds/build-deps.sh
+
+      - name: Build Crispy Doom
+        run: sh tools/3ds/build.sh --target crispy-doom_3dsx
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: crispy-doom-3dsx
+          path: build-3ds/src/crispy-doom.3dsx
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: crispy-doom-elf
+          path: build-3ds/src/crispy-doom.elf
+
+  cia:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: crispy-doom-elf
+
+      - name: Install makerom and bannertool
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tools/3ds/install-tools.sh
+
+      - name: Make CIA
+        run: |
+          tools/3ds/make-cia.sh crispy-doom.elf crispy-doom.cia \
+            "Crispy Doom" "Doom, Doom II, Final Doom and mods" \
+            "AlexanderV387, Fabian Greffrath" \
+            0xF3D56 CTR-H-CRDM assets/icon.png assets/banner.png assets/banner.wav
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: crispy-doom-cia
+          path: crispy-doom.cia
+
+  release:
+    # A commit on n3ds whose message contains [release] publishes a GitHub
+    # release tagged n3ds-v<n3ds/VERSION> (GitHub creates the tag).
+    if: github.ref == 'refs/heads/n3ds' && contains(github.event.head_commit.message, '[release]')
+    needs: [build, cia]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: crispy-doom-*
+          path: dist
+          merge-multiple: true
+
+      - run: ls -la dist
+
+      - id: version
+        run: echo "tag=n3ds-v$(cat n3ds/VERSION)" >> "$GITHUB_OUTPUT"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Crispy Doom 3DS ${{ steps.version.outputs.tag }}
+          body_path: n3ds/RELEASE_NOTES.md
+          files: |
+            dist/crispy-doom.cia
+            dist/crispy-doom.3dsx

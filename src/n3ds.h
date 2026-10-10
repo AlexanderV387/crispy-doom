@@ -46,6 +46,11 @@ boolean N3DS_IsNew3DS(void);
 // Stops the thread that composes the screens (before SDL closes them).
 void N3DS_StopPresenting(void);
 
+// Chooses the game (IWAD) and the mod in the data folder, with a menu if
+// there is anything to choose, and sets the arguments to play them.
+// Returns false to quit.
+boolean N3DS_PickGame(int *argc, char ***argv);
+
 // The HOME Menu is closing the game: only quit, as soon as possible.
 boolean N3DS_IsClosing(void);
 
