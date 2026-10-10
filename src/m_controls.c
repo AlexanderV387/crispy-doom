@@ -221,7 +221,8 @@ int key_menu_reloadlevel = 0; // [crispy]
 
 #ifdef __3DS__
 // The project's FPS standard: R fires, A uses, B runs, L strafes, X / Y
-// change weapons, SELECT shows the map (SDL game controller buttons).
+// change weapons, SELECT shows the map (SDL game controller buttons). The
+// buttons are rebound in the menu: N3DS_InitControls sets these again.
 int joybfire = SDL_CONTROLLER_BUTTON_RIGHTSHOULDER;
 int joybstrafe = SDL_CONTROLLER_BUTTON_LEFTSHOULDER;
 int joybuse = SDL_CONTROLLER_BUTTON_A;
@@ -263,7 +264,11 @@ int joybflycenter = -1;
 // Control whether if a mouse button is double clicked, it acts like 
 // "use" has been pressed
 
+#ifdef __3DS__
+int dclick_use = 0; // [3DS] double tapping L (strafe) opened doors
+#else
 int dclick_use = 1;
+#endif
  
 // 
 // Bind all of the common controls used by Doom and all other games.

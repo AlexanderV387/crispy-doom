@@ -1681,6 +1681,16 @@ void D_DoomMain (void)
         n3ds_config_version = 1;
     }
 
+    // Double tapping strafe (L) to open doors was surprising.
+    if (n3ds_config_version < 2)
+    {
+        dclick_use = 0;
+        n3ds_config_version = 2;
+    }
+
+    N3DS_InitControls();
+    N3DS_InGame = N3DS_DoomInGame;
+
     N3DS_SaveOnSuspend = M_SaveDefaults;
     N3DS_DrawBottom = N3DS_DoomDrawBottom;
 #endif

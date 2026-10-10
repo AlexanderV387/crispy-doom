@@ -71,6 +71,57 @@ void N3DS_BindVariables(void);
 // Where the bottom screen is being touched, if it is.
 boolean N3DS_GetTouch(int *x, int *y);
 
+// Touches starting here (the bottom screen's own buttons, set by the game
+// when it draws them; w = 0 for none) do not turn the view.
+void N3DS_ReserveTouch(int x, int y, int w, int h);
+boolean N3DS_TouchReserved(int x, int y);
+
+// ==========================================================================
+// Controls (i_joystick.c). Each action of the game is a joystick button of
+// its own (its bit: its index), on while any of its 3DS buttons is held.
+
+typedef struct
+{
+    const char *name;   // in the menu
+    int *joyb;          // the game's joystick button variable
+    int default_keys;   // 3DS buttons (libctru's KEY_*)
+} n3ds_action_t;
+
+#define N3DS_NUM_ACTIONS 10
+#define N3DS_ACTION_RUN 2
+
+extern const n3ds_action_t n3ds_actions[N3DS_NUM_ACTIONS];
+extern int n3ds_bindings[N3DS_NUM_ACTIONS]; // 3DS buttons of each action
+
+// A, B and START as themselves, for the menus (joystick buttons).
+#define N3DS_JOY_A 17
+#define N3DS_JOY_B 18
+#define N3DS_JOY_START 19
+
+enum
+{
+    N3DS_RUN_HOLD,  // while the button is held
+    N3DS_RUN_ONCE,  // from a press until the player stops moving
+    N3DS_RUN_STICK, // the Circle Pad's tilt gives the speed up to running
+    N3DS_NUM_RUN_MODES
+};
+
+extern int n3ds_dual_stick;  // the C-stick turns (otherwise it strafes)
+extern int n3ds_run_mode;
+extern int n3ds_touch_turn;  // sliding on the bottom screen turns
+extern int n3ds_touch_speed; // 1-10
+
+// Set by the game: playing (in a level, with no menu).
+extern boolean (*N3DS_InGame)(void);
+
+void N3DS_InitControls(void);
+void N3DS_ResetBindings(void);
+void N3DS_DescribeBinding(int action, char *text, size_t size);
+void N3DS_BindKey(int action, int key);
+
+// A bindable button pressed since the last call, -1 for START, or 0.
+int N3DS_TakeNewKey(void);
+
 // Set by the game: draws the bottom screen and returns whether it shows
 // anything. When it does not, it stays black and a tap turns it off.
 extern boolean (*N3DS_DrawBottom)(pixel_t *screen);

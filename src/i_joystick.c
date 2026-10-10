@@ -471,11 +471,162 @@ void I_UpdateGamepad(void)
 
 #ifdef __3DS__
 // The 3DS buttons and sticks, read directly with libctru (SDL's event pump
-// calls hidScanInput), as SDL game controller state: the bindings (joyb*)
-// and the axes use its numbering. ZL runs like B and ZR fires like R. The
-// D-pad is the arrow keys, which move in the game and in the menus.
+// calls hidScanInput). Each action of the game is a joystick button of its
+// own (its bit: its index in n3ds_actions), on while any of its 3DS buttons
+// is held; A, B and START are also there as themselves, for the menus. The
+// axes use SDL's game controller numbering. The D-pad is the arrow keys,
+// which move in the game and in the menus.
 
 #include <3ds.h>
+
+#include "m_controls.h"
+#include "n3ds.h"
+
+// The project's FPS standard: R fires, A uses, B runs, L strafes, X / Y
+// change weapons, SELECT shows the map.
+const n3ds_action_t n3ds_actions[N3DS_NUM_ACTIONS] =
+{
+    { "Fire",            &joybfire,        KEY_R | KEY_ZR },
+    { "Use / Open",      &joybuse,         KEY_A },
+    { "Run",             &joybspeed,       KEY_B | KEY_ZL },
+    { "Strafe",          &joybstrafe,      KEY_L },
+    { "Previous Weapon", &joybprevweapon,  KEY_Y },
+    { "Next Weapon",     &joybnextweapon,  KEY_X },
+    { "Automap",         &joybautomap,     KEY_SELECT },
+    { "Jump",            &joybjump,        0 },
+    { "Strafe Left",     &joybstrafeleft,  0 },
+    { "Strafe Right",    &joybstraferight, 0 },
+};
+
+int n3ds_bindings[N3DS_NUM_ACTIONS];
+int n3ds_dual_stick = 1;
+int n3ds_run_mode = N3DS_RUN_HOLD;
+int n3ds_touch_turn = 0;
+int n3ds_touch_speed = 5;
+
+boolean (*N3DS_InGame)(void);
+
+// The buttons that can be bound, in the order of their names.
+static const struct { int key; const char *name; } bindable[] =
+{
+    { KEY_A, "A" }, { KEY_B, "B" }, { KEY_X, "X" }, { KEY_Y, "Y" },
+    { KEY_L, "L" }, { KEY_R, "R" }, { KEY_ZL, "ZL" }, { KEY_ZR, "ZR" },
+    { KEY_SELECT, "SELECT" },
+};
+
+#define BINDABLE_KEYS (KEY_A | KEY_B | KEY_X | KEY_Y | KEY_L | KEY_R \
+                     | KEY_ZL | KEY_ZR | KEY_SELECT)
+
+void N3DS_ResetBindings(void)
+{
+    int i;
+
+    for (i = 0; i < N3DS_NUM_ACTIONS; ++i)
+    {
+        n3ds_bindings[i] = n3ds_actions[i].default_keys;
+    }
+}
+
+void N3DS_DescribeBinding(int action, char *text, size_t size)
+{
+    int i;
+
+    text[0] = '\0';
+
+    for (i = 0; i < arrlen(bindable); ++i)
+    {
+        if ((n3ds_bindings[action] & bindable[i].key) != 0)
+        {
+            if (text[0] != '\0')
+            {
+                M_StringConcat(text, " ", size);
+            }
+
+            M_StringConcat(text, bindable[i].name, size);
+        }
+    }
+
+    if (text[0] == '\0')
+    {
+        M_StringCopy(text, "-", size);
+    }
+}
+
+// A button belongs to one action only; pressing one the action already has
+// takes it away.
+void N3DS_BindKey(int action, int key)
+{
+    int i;
+
+    if ((n3ds_bindings[action] & key) != 0)
+    {
+        n3ds_bindings[action] &= ~key;
+        return;
+    }
+
+    for (i = 0; i < N3DS_NUM_ACTIONS; ++i)
+    {
+        n3ds_bindings[i] &= ~key;
+    }
+
+    n3ds_bindings[action] |= key;
+}
+
+// Buttons pressed since the last call: one bindable button, -1 for START,
+// or 0.
+static u32 keys_pressed;
+
+int N3DS_TakeNewKey(void)
+{
+    const u32 pressed = keys_pressed;
+    int i;
+
+    keys_pressed = 0;
+
+    if ((pressed & KEY_START) != 0)
+    {
+        return -1;
+    }
+
+    for (i = 0; i < arrlen(bindable); ++i)
+    {
+        if ((pressed & bindable[i].key) != 0)
+        {
+            return bindable[i].key;
+        }
+    }
+
+    return 0;
+}
+
+// After the configuration is loaded: the actions' joystick buttons are
+// fixed (older configurations saved others), and so are the axes.
+void N3DS_InitControls(void)
+{
+    static int *const other_buttons[] =
+    {
+        &joybuseartifact, &joybinvleft, &joybinvright,
+        &joybflyup, &joybflydown, &joybflycenter,
+    };
+    int i;
+
+    for (i = 0; i < N3DS_NUM_ACTIONS; ++i)
+    {
+        *n3ds_actions[i].joyb = i;
+        n3ds_bindings[i] &= BINDABLE_KEYS;
+    }
+
+    for (i = 0; i < arrlen(other_buttons); ++i)
+    {
+        *other_buttons[i] = -1;
+    }
+
+    joybmenu = N3DS_JOY_START;
+    joystick_y_axis = SDL_CONTROLLER_AXIS_LEFTY;
+    joystick_look_axis = -1;
+    n3ds_run_mode = BETWEEN(0, N3DS_NUM_RUN_MODES - 1, n3ds_run_mode);
+    n3ds_touch_speed = BETWEEN(1, 10, n3ds_touch_speed);
+}
 
 static int N3DS_AxisValue(int value)
 {
@@ -515,28 +666,59 @@ static void N3DS_UpdateArrowKeys(u32 held)
     last_held = held;
 }
 
+// Turning by sliding a finger on the bottom screen, as a mouse: the engine
+// turns by the whole slide every frame, with no cap per frame. Only in the
+// game, and not from the bottom screen's own buttons.
+static void N3DS_UpdateTouchTurn(void)
+{
+    static boolean sliding = false;
+    static int last_x;
+    int x, y;
+
+    if (!N3DS_GetTouch(&x, &y))
+    {
+        sliding = false;
+        return;
+    }
+
+    if (!sliding)
+    {
+        sliding = n3ds_touch_turn && N3DS_InGame != NULL && N3DS_InGame()
+               && !N3DS_TouchReserved(x, y);
+        last_x = x;
+        return;
+    }
+
+    if (x != last_x)
+    {
+        event_t ev;
+
+        ev.type = ev_mouse;
+        ev.data1 = 0;
+        ev.data2 = (x - last_x) * n3ds_touch_speed;
+        ev.data3 = 0;
+        D_PostEvent(&ev);
+        last_x = x;
+    }
+}
+
 static void N3DS_UpdateJoystick(void)
 {
-    static const struct { u32 key; int button; } buttons[] =
-    {
-        { KEY_A, SDL_CONTROLLER_BUTTON_A },
-        { KEY_B, SDL_CONTROLLER_BUTTON_B },
-        { KEY_X, SDL_CONTROLLER_BUTTON_X },
-        { KEY_Y, SDL_CONTROLLER_BUTTON_Y },
-        { KEY_SELECT, SDL_CONTROLLER_BUTTON_BACK },
-        { KEY_START, SDL_CONTROLLER_BUTTON_START },
-        { KEY_L, SDL_CONTROLLER_BUTTON_LEFTSHOULDER },
-        { KEY_R, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER },
-        { KEY_ZL, SDL_CONTROLLER_BUTTON_B },
-        { KEY_ZR, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER },
-    };
+    static u32 last_held = 0;
+    static boolean running = false;
     const u32 held = hidKeysHeld();
+    const u32 pressed = held & ~last_held;
     circlePosition circle_pad, c_stick;
     int axis_values[SDL_CONTROLLER_AXIS_MAX] = {0};
+    boolean moving;
     event_t ev;
     int i;
 
+    last_held = held;
+    keys_pressed |= pressed;
+
     N3DS_UpdateArrowKeys(held);
+    N3DS_UpdateTouchTurn();
 
     hidCircleRead(&circle_pad);
     hidCstickRead(&c_stick);
@@ -547,15 +729,63 @@ static void N3DS_UpdateJoystick(void)
     axis_values[SDL_CONTROLLER_AXIS_RIGHTX] = N3DS_AxisValue(c_stick.dx);
     axis_values[SDL_CONTROLLER_AXIS_RIGHTY] = N3DS_AxisValue(-c_stick.dy);
 
+    // Dual stick: the Circle Pad moves and strafes, the C-stick turns.
+    // Classic: the Circle Pad moves and turns, the C-stick strafes.
+    joystick_x_axis = n3ds_dual_stick ? SDL_CONTROLLER_AXIS_RIGHTX
+                                      : SDL_CONTROLLER_AXIS_LEFTX;
+    joystick_strafe_axis = n3ds_dual_stick ? SDL_CONTROLLER_AXIS_LEFTX
+                                           : SDL_CONTROLLER_AXIS_RIGHTX;
+
     ev.type = ev_joystick;
     ev.data1 = 0;
 
-    for (i = 0; i < arrlen(buttons); ++i)
+    for (i = 0; i < N3DS_NUM_ACTIONS; ++i)
     {
-        if ((held & buttons[i].key) != 0)
+        if ((held & n3ds_bindings[i]) != 0)
         {
-            ev.data1 |= 1 << buttons[i].button;
+            ev.data1 |= 1 << i;
         }
+    }
+
+    // Running: while the button is held; from a press until the player
+    // stops moving; or with the Circle Pad (or the D-pad) all the way, the
+    // tilt giving the speed up to running.
+    moving = abs(circle_pad.dx) > 20 || abs(circle_pad.dy) > 20
+          || (held & (KEY_DUP | KEY_DDOWN)) != 0;
+
+    if (n3ds_run_mode == N3DS_RUN_ONCE)
+    {
+        if ((pressed & n3ds_bindings[N3DS_ACTION_RUN]) != 0)
+        {
+            running = true;
+        }
+        else if (!moving)
+        {
+            running = false;
+        }
+
+        if (running)
+        {
+            ev.data1 |= 1 << N3DS_ACTION_RUN;
+        }
+    }
+    else if (n3ds_run_mode == N3DS_RUN_STICK && moving)
+    {
+        ev.data1 |= 1 << N3DS_ACTION_RUN;
+    }
+
+    // The menus' own buttons.
+    if ((held & KEY_A) != 0)
+    {
+        ev.data1 |= 1 << N3DS_JOY_A;
+    }
+    if ((held & KEY_B) != 0)
+    {
+        ev.data1 |= 1 << N3DS_JOY_B;
+    }
+    if ((held & KEY_START) != 0)
+    {
+        ev.data1 |= 1 << N3DS_JOY_START;
     }
 
     ev.data2 = GetAxisStateGamepad(axis_values, joystick_x_axis,

@@ -151,6 +151,28 @@ void N3DS_BindVariables(void)
     M_BindIntVariable("n3ds_smooth_scaling", &n3ds_smooth_scaling);
     M_BindIntVariable("n3ds_show_fps",       &n3ds_show_fps);
     M_BindIntVariable("n3ds_map_zoom",       &n3ds_map_zoom);
+    M_BindIntVariable("n3ds_dual_stick",     &n3ds_dual_stick);
+    M_BindIntVariable("n3ds_run_mode",       &n3ds_run_mode);
+    M_BindIntVariable("n3ds_touch_turn",     &n3ds_touch_turn);
+    M_BindIntVariable("n3ds_touch_speed",    &n3ds_touch_speed);
+
+    {
+        static const char *const names[N3DS_NUM_ACTIONS] =
+        {
+            "n3ds_bind_fire", "n3ds_bind_use", "n3ds_bind_run",
+            "n3ds_bind_strafe", "n3ds_bind_prevweapon",
+            "n3ds_bind_nextweapon", "n3ds_bind_automap", "n3ds_bind_jump",
+            "n3ds_bind_strafeleft", "n3ds_bind_straferight",
+        };
+        int i;
+
+        N3DS_ResetBindings();
+
+        for (i = 0; i < N3DS_NUM_ACTIONS; ++i)
+        {
+            M_BindIntVariable(names[i], &n3ds_bindings[i]);
+        }
+    }
     M_BindIntVariable("n3ds_config_version", &n3ds_config_version);
 }
 
@@ -235,13 +257,18 @@ static void RestoreBottomBacklight(void)
 }
 
 // A tap turns the bottom screen off or on, except while it shows the
-// status bar or the map; when they appear it turns on by itself.
+// status bar or the map (or turns the view); when they appear it turns on
+// by itself.
 static void UpdateBottomBacklight(boolean showing)
 {
     static boolean was_touching = false;
     const boolean touching = (hidKeysHeld() & KEY_TOUCH) != 0;
 
-    if (touching && !was_touching && (!bottom_on || !showing))
+    // Turning with the touch screen: a tap in the game is not a toggle.
+    const boolean turning = n3ds_touch_turn && N3DS_InGame != NULL
+                         && N3DS_InGame();
+
+    if (touching && !was_touching && (!bottom_on || !(showing || turning)))
     {
         bottom_on = !bottom_on;
         SetBottomBacklight(bottom_on);
@@ -268,6 +295,22 @@ boolean N3DS_GetTouch(int *x, int *y)
     *x = touch.px;
     *y = touch.py;
     return true;
+}
+
+static int reserved_x, reserved_y, reserved_w, reserved_h;
+
+void N3DS_ReserveTouch(int x, int y, int w, int h)
+{
+    reserved_x = x;
+    reserved_y = y;
+    reserved_w = w;
+    reserved_h = h;
+}
+
+boolean N3DS_TouchReserved(int x, int y)
+{
+    return x >= reserved_x && x < reserved_x + reserved_w
+        && y >= reserved_y && y < reserved_y + reserved_h;
 }
 
 // ==========================================================================

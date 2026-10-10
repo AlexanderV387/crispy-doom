@@ -29,12 +29,11 @@
 #include "crispy.h"
 #include "doomstat.h"
 #include "i_video.h"
+#include "m_menu.h"
 #include "n3ds.h"
 #include "n3ds_doom.h"
 #include "st_stuff.h"
 #include "v_video.h"
-
-extern int screenblocks;
 
 // Full view without the Crispy HUD: the status bar goes to the bottom.
 #define FULL_VIEW 11
@@ -155,6 +154,8 @@ static void DrawMap(pixel_t *screen, int y, int height)
     const int minus_y = y + height - BUTTON_SIZE - 4;
     const int plus_y = minus_y - BUTTON_SIZE - 4;
 
+    N3DS_ReserveTouch(0, plus_y - 4, BUTTON_X + BUTTON_SIZE + 8,
+                      minus_y + BUTTON_SIZE + 4 - (plus_y - 4));
     UpdateZoom(plus_y, minus_y);
     AM_DrawBottom(screen, y, N3DS_BOTTOM_WIDTH, height,
                   BETWEEN(MIN_ZOOM, MAX_ZOOM, n3ds_map_zoom));
@@ -162,11 +163,19 @@ static void DrawMap(pixel_t *screen, int y, int height)
     DrawZoomButton(screen, minus_y, false);
 }
 
+boolean N3DS_DoomInGame(void)
+{
+    return gamestate == GS_LEVEL && !menuactive && !demoplayback;
+}
+
 boolean N3DS_DoomDrawBottom(pixel_t *screen)
 {
     const boolean bar = screenblocks == FULL_VIEW;
     const boolean map = n3ds_bottom_map != 0;
     const int map_height = N3DS_BOTTOM_HEIGHT - (bar ? ST_HEIGHT : 0);
+
+    // The zoom buttons set it again when the map is drawn.
+    N3DS_ReserveTouch(0, 0, 0, 0);
 
     if (gamestate != GS_LEVEL || !gametic || players[displayplayer].mo == NULL
      || (!bar && !map))

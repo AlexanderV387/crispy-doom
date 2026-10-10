@@ -714,10 +714,38 @@ enum
     n3ds_smooth,
     n3ds_sep_top_,
 
+    n3ds_sep_controls,
+    n3ds_dualstick,
+    n3ds_run,
+    n3ds_touchturn,
+    n3ds_touchspeed,
+    n3ds_sep_controls_,
+
     n3ds_next,
     n3ds_prev,
     n3ds_end
 } n3ds_e;
+
+static void M_N3DSToggleDualStick(int choice)
+{
+    n3ds_dual_stick = !n3ds_dual_stick;
+}
+
+static void M_N3DSToggleRun(int choice)
+{
+    n3ds_run_mode = (n3ds_run_mode + (choice ? 1 : N3DS_NUM_RUN_MODES - 1))
+                  % N3DS_NUM_RUN_MODES;
+}
+
+static void M_N3DSToggleTouchTurn(int choice)
+{
+    n3ds_touch_turn = !n3ds_touch_turn;
+}
+
+static void M_N3DSChangeTouchSpeed(int choice)
+{
+    n3ds_touch_speed = BETWEEN(1, 10, n3ds_touch_speed + (choice ? 1 : -1));
+}
 
 static void M_N3DSToggleMap(int choice)
 {
@@ -757,6 +785,12 @@ static menuitem_t N3DSMenu[]=
     {-1,"",0,'\0'},
     {3,"",	M_N3DSToggleSmooth,'s'},
     {-1,"",0,'\0'},
+    {-1,"",0,'\0'},
+    {3,"",	M_N3DSToggleDualStick,'d'},
+    {3,"",	M_N3DSToggleRun,'r'},
+    {3,"",	M_N3DSToggleTouchTurn,'t'},
+    {3,"",	M_N3DSChangeTouchSpeed,'s'},
+    {-1,"",0,'\0'},
     {1,"",	M_CrispnessNext,'n'},
     {1,"",	M_CrispnessPrev,'p'},
 };
@@ -770,12 +804,71 @@ static menu_t  N3DSDef =
     48,18,
     1
 };
+
+// [3DS] The buttons of each action: A on a row waits for a button.
+enum
+{
+    buttons_first,
+    buttons_last = buttons_first + N3DS_NUM_ACTIONS - 1,
+    buttons_sep,
+    buttons_reset,
+    buttons_sep_,
+    buttons_next,
+    buttons_prev,
+    buttons_end
+} buttons_e;
+
+// The action waiting for a button, or -1.
+static int n3ds_binding = -1;
+
+static void M_N3DSBindAction(int choice)
+{
+    n3ds_binding = choice - buttons_first;
+    N3DS_TakeNewKey(); // forget earlier presses
+}
+
+static void M_N3DSResetBindings(int choice)
+{
+    N3DS_ResetBindings();
+}
+
+static menuitem_t N3DSButtonsMenu[]=
+{
+    {1,"",	M_N3DSBindAction,'f'},
+    {1,"",	M_N3DSBindAction,'u'},
+    {1,"",	M_N3DSBindAction,'r'},
+    {1,"",	M_N3DSBindAction,'s'},
+    {1,"",	M_N3DSBindAction,'p'},
+    {1,"",	M_N3DSBindAction,'n'},
+    {1,"",	M_N3DSBindAction,'a'},
+    {1,"",	M_N3DSBindAction,'j'},
+    {1,"",	M_N3DSBindAction,'l'},
+    {1,"",	M_N3DSBindAction,'r'},
+    {-1,"",0,'\0'},
+    {1,"",	M_N3DSResetBindings,'d'},
+    {-1,"",0,'\0'},
+    {1,"",	M_CrispnessNext,'n'},
+    {1,"",	M_CrispnessPrev,'p'},
+};
+
+static void M_DrawN3DSButtons(void);
+
+static menu_t  N3DSButtonsDef =
+{
+    buttons_end,
+    &OptionsDef,
+    N3DSButtonsMenu,
+    M_DrawN3DSButtons,
+    48,18,
+    0
+};
 #endif
 
 static menu_t *CrispnessMenus[] =
 {
 #ifdef __3DS__
 	&N3DSDef,
+	&N3DSButtonsDef,
 #endif
 	&Crispness1Def,
 	&Crispness2Def,
@@ -1672,6 +1765,9 @@ static void M_DrawN3DSChoice(int y, const char *item, const char *value, boolean
 static void M_DrawN3DS(void)
 {
     static const char *const positions[] = {"Top", "Middle", "Bottom"};
+    static const char *const run_modes[N3DS_NUM_RUN_MODES] =
+        {"Hold Button", "Press Once", "Stick All the Way"};
+    char speed[8];
     const char *hud;
 
     if (n3ds_bottom_map)
@@ -1696,8 +1792,57 @@ static void M_DrawN3DS(void)
     M_DrawCrispnessSeparator(n3ds_sep_top, "Top Screen");
     M_DrawCrispnessItem(n3ds_smooth, "Smooth Pixel Scaling", n3ds_smooth_scaling, true);
 
+    M_DrawCrispnessSeparator(n3ds_sep_controls, "Controls");
+    M_DrawN3DSChoice(n3ds_dualstick, "C-Stick", n3ds_dual_stick ? "Turn" : "Strafe", true);
+    M_DrawN3DSChoice(n3ds_run, "Run", run_modes[n3ds_run_mode % N3DS_NUM_RUN_MODES], true);
+    M_DrawCrispnessItem(n3ds_touchturn, "Turn with Touch Screen", n3ds_touch_turn, true);
+    M_snprintf(speed, sizeof(speed), "%d", n3ds_touch_speed);
+    M_DrawN3DSChoice(n3ds_touchspeed, "Touch Turning Speed", speed, n3ds_touch_turn);
+
     M_DrawCrispnessGoto(n3ds_next, "Next Page >");
     M_DrawCrispnessGoto(n3ds_prev, "< Last Page");
+
+    dp_translation = NULL;
+}
+
+static void M_DrawN3DSButtons(void)
+{
+    char keys[32];
+    int i;
+
+    M_DrawCrispnessBackground();
+
+    M_DrawCrispnessHeader("Buttons");
+
+    for (i = 0; i < N3DS_NUM_ACTIONS; ++i)
+    {
+        if (i == n3ds_binding)
+        {
+            M_StringCopy(keys, "Press a button", sizeof(keys));
+        }
+        else
+        {
+            N3DS_DescribeBinding(i, keys, sizeof(keys));
+        }
+
+        M_snprintf(crispy_menu_text, sizeof(crispy_menu_text), "%s%s: %s%s",
+                   crstr[CR_NONE], n3ds_actions[i].name,
+                   i == n3ds_binding ? crstr[CR_GOLD] : crstr[CR_GREEN], keys);
+        M_WriteText(currentMenu->x, currentMenu->y + CRISPY_LINEHEIGHT * (buttons_first + i),
+                    crispy_menu_text);
+    }
+
+    M_DrawCrispnessGoto(buttons_reset, "Reset to Defaults");
+
+    M_DrawCrispnessGoto(buttons_next, "Next Page >");
+    M_DrawCrispnessGoto(buttons_prev, "< Prev Page");
+
+    // How it works.
+    M_snprintf(crispy_menu_text, sizeof(crispy_menu_text), "%s%s", crstr[CR_GRAY],
+               n3ds_binding >= 0 ? "Again to remove it. START: cancel"
+                                 : "A: change   START, D-pad: fixed");
+    M_WriteText(ORIGWIDTH/2 - M_StringWidth(crispy_menu_text) / 2, 188,
+                crispy_menu_text);
 
     dp_translation = NULL;
 }
@@ -2533,6 +2678,35 @@ boolean M_Responder (event_t* ev)
         n3ds_pressed = ev->data1 & ~n3ds_last_buttons;
         n3ds_last_buttons = ev->data1;
     }
+
+    // Waiting for the button of an action: nothing else happens meanwhile.
+    if (n3ds_binding >= 0)
+    {
+        if (!menuactive || currentMenu != &N3DSButtonsDef)
+        {
+            n3ds_binding = -1;
+        }
+        else
+        {
+            if (ev->type == ev_joystick)
+            {
+                const int new_key = N3DS_TakeNewKey();
+
+                if (new_key != 0)
+                {
+                    if (new_key > 0)
+                    {
+                        N3DS_BindKey(n3ds_binding, new_key);
+                    }
+
+                    n3ds_binding = -1;
+                    S_StartSoundOptional(NULL, sfx_mnuact, sfx_pistol);
+                }
+            }
+
+            return ev->type != ev_quit;
+        }
+    }
 #endif
 
     if (ev->type == ev_joystick)
@@ -2585,8 +2759,8 @@ boolean M_Responder (event_t* ev)
 #ifdef __3DS__
             // Nintendo layout in the menus: A accepts and B goes back,
             // whatever the buttons do in the game.
-#define JOY_MENU_FORWARD SDL_CONTROLLER_BUTTON_A
-#define JOY_MENU_BACK SDL_CONTROLLER_BUTTON_B
+#define JOY_MENU_FORWARD N3DS_JOY_A
+#define JOY_MENU_BACK N3DS_JOY_B
 #else
 #define JOY_MENU_FORWARD joybfire
 #define JOY_MENU_BACK joybuse

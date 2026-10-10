@@ -922,8 +922,22 @@ AM_Responder
 
     rc = false;
 
+#ifdef __3DS__
+    // [3DS] Once per press: held, SELECT opened and closed it over and over.
+    static int last_buttons = 0;
+    const int pressed = ev->type == ev_joystick ? ev->data1 & ~last_buttons : 0;
+
+    if (ev->type == ev_joystick)
+    {
+        last_buttons = ev->data1;
+    }
+
+    if (ev->type == ev_joystick && joybautomap >= 0
+        && (pressed & (1 << joybautomap)) != 0)
+#else
     if (ev->type == ev_joystick && joybautomap >= 0
         && (ev->data1 & (1 << joybautomap)) != 0)
+#endif
     {
         joywait = I_GetTime() + 5;
 

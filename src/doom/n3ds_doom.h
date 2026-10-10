@@ -25,6 +25,9 @@
 // Status bar and automap on the bottom screen (see N3DS_DrawBottom).
 boolean N3DS_DoomDrawBottom(pixel_t *screen);
 
+// Playing: in a level, with no menu (see N3DS_InGame).
+boolean N3DS_DoomInGame(void);
+
 #endif // __3DS__
 
 #endif // N3DS_DOOM_H

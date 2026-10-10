@@ -793,6 +793,43 @@ static default_t extra_defaults_list[] =
     CONFIG_VARIABLE_INT(n3ds_map_zoom),
 
     //!
+    // Nintendo 3DS: the Circle Pad moves and strafes and the C-stick turns
+    // (1), or the Circle Pad moves and turns and the C-stick strafes (0).
+    //
+
+    CONFIG_VARIABLE_INT(n3ds_dual_stick),
+
+    //!
+    // Nintendo 3DS: running: 0 while the button is held, 1 from a press
+    // until the player stops, 2 with the Circle Pad all the way.
+    //
+
+    CONFIG_VARIABLE_INT(n3ds_run_mode),
+
+    //!
+    // Nintendo 3DS: sliding on the bottom screen turns, and its speed
+    // (1-10).
+    //
+
+    CONFIG_VARIABLE_INT(n3ds_touch_turn),
+    CONFIG_VARIABLE_INT(n3ds_touch_speed),
+
+    //!
+    // Nintendo 3DS: the buttons of each action (libctru's KEY_* bits).
+    //
+
+    CONFIG_VARIABLE_INT(n3ds_bind_fire),
+    CONFIG_VARIABLE_INT(n3ds_bind_use),
+    CONFIG_VARIABLE_INT(n3ds_bind_run),
+    CONFIG_VARIABLE_INT(n3ds_bind_strafe),
+    CONFIG_VARIABLE_INT(n3ds_bind_prevweapon),
+    CONFIG_VARIABLE_INT(n3ds_bind_nextweapon),
+    CONFIG_VARIABLE_INT(n3ds_bind_automap),
+    CONFIG_VARIABLE_INT(n3ds_bind_jump),
+    CONFIG_VARIABLE_INT(n3ds_bind_strafeleft),
+    CONFIG_VARIABLE_INT(n3ds_bind_straferight),
+
+    //!
     // Nintendo 3DS: version of the configuration, to update older ones.
     //
 
