@@ -17,6 +17,7 @@
 
 #ifdef __3DS__
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,6 +27,8 @@
 
 #include <3ds.h>
 
+#include "crispy.h"
+#include "d_event.h"
 #include "m_config.h"
 #include "m_misc.h"
 #include "n3ds.h"
@@ -352,14 +355,27 @@ static void MapButtonRows(int map_y, int map_height, int *plus_y, int *minus_y)
     *plus_y = *minus_y - BUTTON_SIZE - 4;
 }
 
+// Tapped: the keyboard opens at the next frame (N3DS_Present).
+static boolean keyboard_requested = false;
+
 int N3DS_UpdateMapZoom(int map_y, int map_height)
 {
     static int held = 0;
+    static boolean was_touching = false;
     int plus_y, minus_y, x, y, direction = 0;
+    const boolean touching = N3DS_GetTouch(&x, &y);
 
+    // The keyboard button too, at the top left: the whole left strip.
     MapButtonRows(map_y, map_height, &plus_y, &minus_y);
-    N3DS_ReserveTouch(0, plus_y - 4, BUTTON_X + BUTTON_SIZE + 8,
-                      minus_y + BUTTON_SIZE + 4 - (plus_y - 4));
+    N3DS_ReserveTouch(0, map_y, BUTTON_X + BUTTON_SIZE + 8, map_height);
+
+    if (touching && !was_touching && x < BUTTON_X + BUTTON_SIZE + 8
+     && y >= map_y && y < map_y + BUTTON_X + BUTTON_SIZE + 4)
+    {
+        keyboard_requested = true;
+    }
+
+    was_touching = touching;
 
     if (N3DS_GetTouch(&x, &y) && x < BUTTON_X + BUTTON_SIZE + 8)
     {
@@ -426,12 +442,34 @@ static void DrawMapButton(pixel_t *screen, int y, boolean plus, int gray,
     }
 }
 
+// A small keyboard: three rows of keys and the space bar.
+static void DrawKeyboardButton(pixel_t *screen, int y, int gray, int black,
+                               int white)
+{
+    int row, key;
+
+    FillRect(screen, BUTTON_X, y, BUTTON_SIZE, BUTTON_SIZE, gray);
+    FillRect(screen, BUTTON_X + 2, y + 2, BUTTON_SIZE - 4, BUTTON_SIZE - 4, black);
+
+    for (row = 0; row < 3; ++row)
+    {
+        for (key = 0; key < 4 - (row == 2); ++key)
+        {
+            FillRect(screen, BUTTON_X + 5 + row + key * 4, y + 5 + row * 4,
+                     2, 2, white);
+        }
+    }
+
+    FillRect(screen, BUTTON_X + 8, y + 17, 8, 2, white);
+}
+
 void N3DS_DrawMapButtons(pixel_t *screen, int map_y, int map_height,
                          int gray, int black, int white)
 {
     int plus_y, minus_y;
 
     MapButtonRows(map_y, map_height, &plus_y, &minus_y);
+    DrawKeyboardButton(screen, map_y + 4, gray, black, white);
     DrawMapButton(screen, plus_y, true, gray, black, white);
     DrawMapButton(screen, minus_y, false, gray, black, white);
 }
@@ -815,6 +853,66 @@ static void StartPresenting(void)
     }
 }
 
+// ==========================================================================
+// The system's keyboard. It takes both screens, so the other core must not
+// be composing them meanwhile.
+
+static boolean InputText(const char *hint, char *text, int size)
+{
+    SwkbdState keyboard;
+    char buffer[64];
+
+    swkbdInit(&keyboard, SWKBD_TYPE_NORMAL, 2, MIN(size, (int) sizeof(buffer)) - 1);
+    swkbdSetHintText(&keyboard, hint);
+    swkbdSetInitialText(&keyboard, text);
+    swkbdSetValidation(&keyboard, SWKBD_ANYTHING, 0, 0);
+
+    if (swkbdInputText(&keyboard, buffer, sizeof(buffer)) != SWKBD_BUTTON_CONFIRM)
+    {
+        return false;
+    }
+
+    M_StringCopy(text, buffer, size);
+    return true;
+}
+
+boolean N3DS_InputText(const char *hint, char *text, int size)
+{
+    if (present_thread != NULL)
+    {
+        LightEvent_Wait(&frame_done);
+    }
+
+    return InputText(hint, text, size);
+}
+
+// The keyboard button: what is typed reaches the game as key presses (the
+// cheats, for instance).
+static void TypeText(void)
+{
+    char text[32] = "";
+    int i;
+
+    if (!InputText("Type (cheats...)", text, sizeof(text)))
+    {
+        return;
+    }
+
+    for (i = 0; text[i] != '\0'; ++i)
+    {
+        event_t ev;
+        const int ch = (unsigned char) text[i];
+
+        ev.type = ev_keydown;
+        ev.data1 = tolower(ch);
+        ev.data2 = ch;
+        ev.data3 = ch;
+        D_PostEvent(&ev);
+        ev.type = ev_keyup;
+        D_PostEvent(&ev);
+    }
+}
+
 void N3DS_StopPresenting(void)
 {
     if (present_thread != NULL)
@@ -860,6 +958,14 @@ void N3DS_Present(const pixel_t *buffer, int width, int height,
         CountFrame((int) ((work_end - work_start) / CPU_TICKS_PER_USEC),
                    (int) (compose_ticks / CPU_TICKS_PER_USEC));
         work_start = svcGetSystemTick();
+    }
+
+    // The other thread is idle until the next frame: the keyboard can take
+    // the screens.
+    if (keyboard_requested)
+    {
+        keyboard_requested = false;
+        TypeText();
     }
 
     // The other thread is idle: the frame is free to fill.

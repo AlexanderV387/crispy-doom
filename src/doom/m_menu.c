@@ -1260,6 +1260,46 @@ static boolean StartsWithMapIdentifier (char *str)
 //
 // User wants to save. Start string input for M_Responder
 //
+#ifdef __3DS__
+// [3DS] The system's keyboard edits the name; then Enter (or Escape, if
+// cancelled) finishes as if it had been typed. Only what the menu font has,
+// in capitals.
+static void N3DS_EditSaveString(const char *hint, char *string, int *index)
+{
+    char text[SAVESTRINGSIZE];
+    event_t ev;
+    int i, j = 0;
+
+    M_StringCopy(text, string, sizeof(text));
+
+    if (N3DS_InputText(hint, text, sizeof(text)))
+    {
+        for (i = 0; text[i] != '\0' && j < SAVESTRINGSIZE - 1; ++i)
+        {
+            const int ch = toupper((unsigned char) text[i]);
+
+            if (ch == ' ' || (ch - HU_FONTSTART >= 0 && ch - HU_FONTSTART < HU_FONTSIZE))
+            {
+                string[j++] = ch;
+            }
+        }
+
+        string[j] = '\0';
+        *index = j;
+        ev.data1 = KEY_ENTER;
+    }
+    else
+    {
+        ev.data1 = KEY_ESCAPE;
+    }
+
+    ev.type = ev_keydown;
+    ev.data2 = 0;
+    ev.data3 = 0;
+    D_PostEvent(&ev);
+}
+#endif
+
 void M_SaveSelect(int choice)
 {
     int x, y;
@@ -1289,6 +1329,11 @@ void M_SaveSelect(int choice)
         }
     }
     saveCharIndex = strlen(savegamestrings[choice]);
+
+#ifdef __3DS__
+    N3DS_EditSaveString("Name this saved game", savegamestrings[choice],
+                        &saveCharIndex);
+#endif
 }
 
 //

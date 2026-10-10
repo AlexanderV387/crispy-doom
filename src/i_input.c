@@ -299,6 +299,12 @@ void I_StartTextInput(int x1, int y1, int x2, int y2)
 {
     text_input_enabled = true;
 
+#ifdef __3DS__
+    // [3DS] SDL's would open the system keyboard with no text to edit: the
+    // menus open it themselves (N3DS_InputText).
+    return;
+#endif
+
     if (!vanilla_keyboard_mapping)
     {
         // SDL2-TODO: SDL_SetTextInputRect(...);

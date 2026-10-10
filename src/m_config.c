@@ -3318,6 +3318,11 @@ static char *GetDefaultConfigDir(void)
     char *result;
     char *copy;
 
+#ifdef __3DS__
+    // [3DS] Each game's own folder (SDL's is crispy-doom's for all).
+    return M_StringDuplicate(N3DS_DATA_DIR);
+#endif
+
     result = SDL_GetPrefPath("", PACKAGE_TARNAME);
     if (result != NULL)
     {
@@ -3380,7 +3385,11 @@ void M_SetMusicPackDir(void)
         return;
     }
 
+#ifdef __3DS__
+    prefdir = SDL_strdup(N3DS_DATA_DIR); // [3DS] each game's own folder
+#else
     prefdir = SDL_GetPrefPath("", PACKAGE_TARNAME);
+#endif
     if (prefdir == NULL)
     {
         printf("M_SetMusicPackDir: SDL_GetPrefPath failed, music pack directory not set\n");

@@ -62,6 +62,10 @@ void N3DS_StopPresenting(void);
 // Returns false to quit.
 boolean N3DS_PickGame(int *argc, char ***argv);
 
+// The system's keyboard, with a hint and the text to edit (size bytes).
+// Returns false if cancelled.
+boolean N3DS_InputText(const char *hint, char *text, int size);
+
 // The HOME Menu is closing the game: only quit, as soon as possible.
 boolean N3DS_IsClosing(void);
 
