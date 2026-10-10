@@ -1262,7 +1262,13 @@ void G_PrepTiccmd (void)
         mousex = 0;
     }
 
+#ifdef __3DS__
+    // [3DS] Touch turning up and down looks, as the mouse look.
+    if (mousey && (crispy->mouselook || mousebuttons[mousebmouselook]
+                   || (n3ds_touch_turn && n3ds_touch_look)))
+#else
     if (mousey && (crispy->mouselook || mousebuttons[mousebmouselook]))
+#endif
     {
         const double vert = CalcMouseVert(mousey);
         basecmd.lookdir += mouse_y_invert ?

@@ -522,6 +522,7 @@ int n3ds_dual_stick = 1;
 int n3ds_run_mode = N3DS_RUN_HOLD;
 int n3ds_touch_turn = 0;
 int n3ds_touch_speed = 5;
+int n3ds_touch_look = 1;
 
 boolean (*N3DS_InGame)(void);
 
@@ -691,12 +692,13 @@ static void N3DS_UpdateArrowKeys(u32 held)
 }
 
 // Turning by sliding a finger on the bottom screen, as a mouse: the engine
-// turns by the whole slide every frame, with no cap per frame. Only in the
-// game, and not from the bottom screen's own buttons.
+// turns by the whole slide every frame, with no cap per frame; up and down
+// look up and down (the games use it as their mouse look). Only in the game,
+// and not from the bottom screen's own buttons.
 static void N3DS_UpdateTouchTurn(void)
 {
     static boolean sliding = false;
-    static int last_x;
+    static int last_x, last_y;
     int x, y;
 
     if (!N3DS_GetTouch(&x, &y))
@@ -710,19 +712,21 @@ static void N3DS_UpdateTouchTurn(void)
         sliding = n3ds_touch_turn && N3DS_InGame != NULL && N3DS_InGame()
                && !N3DS_TouchReserved(x, y);
         last_x = x;
+        last_y = y;
         return;
     }
 
-    if (x != last_x)
+    if (x != last_x || (n3ds_touch_look && y != last_y))
     {
         event_t ev;
 
         ev.type = ev_mouse;
         ev.data1 = 0;
         ev.data2 = (x - last_x) * n3ds_touch_speed;
-        ev.data3 = 0;
+        ev.data3 = n3ds_touch_look ? (last_y - y) * n3ds_touch_speed : 0;
         D_PostEvent(&ev);
         last_x = x;
+        last_y = y;
     }
 }
 

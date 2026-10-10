@@ -74,7 +74,13 @@ static int LogWrite(void *cookie, const char *buffer, _READ_WRITE_BUFSIZE_TYPE s
         }
     }
 
-    fflush(log_file);
+    // To the SD card at the end of each line: some text comes one
+    // character at a time (putchar), ~5 ms per write.
+    if (at_line_start)
+    {
+        fflush(log_file);
+    }
+
     return (int) size;
 }
 
@@ -190,6 +196,7 @@ void N3DS_BindVariables(void)
     M_BindIntVariable("n3ds_run_mode",       &n3ds_run_mode);
     M_BindIntVariable("n3ds_touch_turn",     &n3ds_touch_turn);
     M_BindIntVariable("n3ds_touch_speed",    &n3ds_touch_speed);
+    M_BindIntVariable("n3ds_touch_look",     &n3ds_touch_look);
 
     {
         int i;

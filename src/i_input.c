@@ -113,7 +113,11 @@ float mouse_acceleration_y = 1.0;
 int mouse_threshold_y = 0;
 int mouse_y_invert = 0;
 
+#ifdef __3DS__
+int runcentering = 0; // [3DS] with the C-stick and the touch screen looking
+#else
 int runcentering = 1; // [crispy]
+#endif
 
 // Translates the SDL key to a value of the type found in doomkeys.h
 static int TranslateKey(SDL_Keysym *sym)
