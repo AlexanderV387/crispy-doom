@@ -668,8 +668,8 @@ static void PresentThread(void *arg)
 static void StartPresenting(void)
 {
     s32 priority = 0x30;
-    Result result;
-    int core;
+    Result result = 0;
+    int core, limit;
 
     LightEvent_Init(&frame_ready, RESET_ONESHOT);
     LightEvent_Init(&frame_done, RESET_STICKY);
@@ -682,7 +682,17 @@ static void StartPresenting(void)
     }
 
     svcGetThreadPriority(&priority, CUR_THREAD_HANDLE);
-    result = APT_SetAppCpuTimeLimit(80);
+    // The .3dsx gets 80% (the Homebrew Launcher's limits); a .cia only up
+    // to what its exheader allows: the most it accepts.
+    for (limit = 80; limit > 0; limit -= 10)
+    {
+        result = APT_SetAppCpuTimeLimit(limit);
+
+        if (R_SUCCEEDED(result))
+        {
+            break;
+        }
+    }
     present_thread = threadCreate(PresentThread, NULL, 32 * 1024, priority,
                                   1, false);
     core = 1;
@@ -698,12 +708,14 @@ static void StartPresenting(void)
     // A .cia needs core 1 in its affinity mask (tools/3ds/app.rsf).
     if (present_thread != NULL)
     {
-        printf("N3DS_Present: composing the screens on core %d (time limit: %08lx)\n",
-               core, (unsigned long) result);
+        printf("N3DS_Present: composing the screens on core %d "
+               "(core 1 time limit: %d%%, %08lx)\n", core, limit,
+               (unsigned long) result);
     }
     else
     {
-        printf("N3DS_Present: composing the screens on the game's core (time limit: %08lx)\n",
+        printf("N3DS_Present: composing the screens on the game's core "
+               "(core 1 time limit: %d%%, %08lx)\n", limit,
                (unsigned long) result);
     }
 }
