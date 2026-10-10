@@ -24,6 +24,9 @@
 
 void M_LoadDefaults(void);
 void M_SaveDefaults(void);
+#ifdef __3DS__
+void M_SaveDefaultsIfChanged(void);
+#endif
 void M_SaveDefaultsAlternate(const char *main, const char *extra);
 void M_SetConfigDir(const char *dir);
 void M_SetMusicPackDir(void);

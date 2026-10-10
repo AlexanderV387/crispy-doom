@@ -64,6 +64,7 @@
 // Data.
 #include "sounds.h"
 
+#include "m_config.h"
 #include "m_menu.h"
 #include "m_crispy.h" // [crispy] Crispness menu
 
@@ -3651,6 +3652,12 @@ void M_Drawer (void)
 //
 void M_ClearMenus (void)
 {
+#ifdef __3DS__
+    if (menuactive)
+    {
+        M_SaveDefaultsIfChanged();
+    }
+#endif
     menuactive = 0;
 
     // [crispy] entering menus while recording demos pauses the game

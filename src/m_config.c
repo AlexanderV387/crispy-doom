@@ -3070,6 +3070,59 @@ void M_SetConfigFilenames(const char *main_config, const char *extra_config)
     default_extra_config = extra_config;
 }
 
+#ifdef __3DS__
+static unsigned int saved_hash;
+
+static unsigned int HashCollection(default_collection_t *collection,
+                                   unsigned int hash)
+{
+    int i;
+
+    for (i = 0; i < collection->numdefaults; ++i)
+    {
+        const default_t *def = &collection->defaults[i];
+        const unsigned char *p;
+        size_t len;
+
+        if (!def->bound)
+        {
+            continue;
+        }
+
+        switch (def->type)
+        {
+            case DEFAULT_STRING:
+                p = (const unsigned char *) *def->location.s;
+                len = p != NULL ? strlen((const char *) p) : 0;
+                break;
+            case DEFAULT_FLOAT:
+                p = (const unsigned char *) def->location.f;
+                len = sizeof(float);
+                break;
+            default:
+                p = (const unsigned char *) def->location.i;
+                len = sizeof(int);
+                break;
+        }
+
+        // FNV-1a, with a separator after every value.
+        while (len-- > 0)
+        {
+            hash = (hash ^ *p++) * 16777619u;
+        }
+        hash = (hash ^ 0xff) * 16777619u;
+    }
+
+    return hash;
+}
+
+static unsigned int ConfigHash(void)
+{
+    return HashCollection(&extra_defaults,
+                          HashCollection(&doom_defaults, 2166136261u));
+}
+#endif
+
 //
 // M_SaveDefaults
 //
@@ -3086,7 +3139,23 @@ void M_SaveDefaults (void)
 
     SaveDefaultCollection(&doom_defaults);
     SaveDefaultCollection(&extra_defaults);
+#ifdef __3DS__
+    saved_hash = ConfigHash();
+#endif
 }
+
+#ifdef __3DS__
+// [3DS] Saved when a menu closes, if anything changed: a crash or running
+// out of battery doesn't lose the settings.
+void M_SaveDefaultsIfChanged(void)
+{
+    if (ConfigHash() != saved_hash)
+    {
+        M_SaveDefaults();
+        printf("M_SaveDefaultsIfChanged: configuration saved\n");
+    }
+}
+#endif
 
 //
 // Save defaults to alternate filenames
@@ -3172,6 +3241,9 @@ void M_LoadDefaults (void)
 
     LoadDefaultCollection(&doom_defaults);
     LoadDefaultCollection(&extra_defaults);
+#ifdef __3DS__
+    saved_hash = ConfigHash();
+#endif
 }
 
 // Get a configuration file variable by its name

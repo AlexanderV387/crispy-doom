@@ -1870,7 +1870,12 @@ void D_DoomMain (void)
     show_exitscreen = show_endoom;
 
     // Save configuration at exit.
+#ifdef __3DS__
+    // [3DS] Also after an error, as Crispy Doom does.
+    I_AtExit(M_SaveDefaults, true);
+#else
     I_AtExit(M_SaveDefaults, false);
+#endif
 
 #ifdef __3DS__
     N3DS_InitControls();

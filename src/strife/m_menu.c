@@ -61,6 +61,7 @@
 // Data.
 #include "sounds.h"
 
+#include "m_config.h"
 #include "m_menu.h"
 #include "p_dialog.h"
 
@@ -3550,6 +3551,12 @@ void M_Drawer (void)
 void M_ClearMenus (int choice)
 {
     choice = 0;     // haleyjd: for no warning; not from decompilation.
+#ifdef __3DS__
+    if (menuactive)
+    {
+        M_SaveDefaultsIfChanged();
+    }
+#endif
     menuactive = 0;
     menupause = 0;
 }
