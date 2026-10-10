@@ -60,10 +60,13 @@ static wad_file_t *W_StdC_OpenFile(const char *path)
     // copied from there: reading hundreds of small lumps from the SD card
     // made the startup take seconds. (Not used in place as a mapped file:
     // lumps are not aligned, and ARM faults on some unaligned loads.) Only
-    // while enough memory stays free; otherwise they are read from the file.
+    // while enough memory stays free for the rest of the game (24 MB: 8 left
+    // Strife unable to create its renderer); otherwise they are read from
+    // the file. Not Strife's voices (26 MB, read only when someone talks).
     {
-        byte *data = malloc(result->wad.length);
-        void *headroom = malloc(8 * 1024 * 1024);
+        const boolean wanted = strcasecmp(M_BaseName(path), "voices.wad") != 0;
+        byte *data = wanted ? malloc(result->wad.length) : NULL;
+        void *headroom = wanted ? malloc(24 * 1024 * 1024) : NULL;
 
         result->data = NULL;
 
