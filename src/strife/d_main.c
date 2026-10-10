@@ -1882,7 +1882,12 @@ void D_DoomMain (void)
     N3DS_InGame = N3DS_StrifeInGame;
     N3DS_SaveOnSuspend = M_SaveDefaults;
     N3DS_DrawBottom = N3DS_StrifeDrawBottom;
-    n3ds_config_version = 2;
+    // "Run" centering the view fought the C-stick and the touch screen.
+    if (n3ds_config_version < 3)
+    {
+        runcentering = 0;
+    }
+    n3ds_config_version = 3;
 
     // The Old 3DS draws at a third of the speed: never in high resolution.
     if (!N3DS_IsNew3DS())

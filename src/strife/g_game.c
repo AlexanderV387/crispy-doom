@@ -1263,9 +1263,10 @@ void G_PrepTiccmd (void)
     }
 
 #ifdef __3DS__
-    // [3DS] Touch turning up and down looks, as the mouse look.
+    // [3DS] Touch turning up and down looks, as the mouse look: Strife
+    // always looks up and down.
     if (mousey && (crispy->mouselook || mousebuttons[mousebmouselook]
-                   || (n3ds_touch_turn && n3ds_touch_look)))
+                   || n3ds_touch_turn))
 #else
     if (mousey && (crispy->mouselook || mousebuttons[mousebmouselook]))
 #endif

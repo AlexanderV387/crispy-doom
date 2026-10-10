@@ -720,7 +720,7 @@ enum
     n3ds_run,
     n3ds_touchturn,
     n3ds_touchspeed,
-    n3ds_touchlook,
+    n3ds_freelook,
     n3ds_sep_controls_,
 
     n3ds_next,
@@ -749,9 +749,12 @@ static void M_N3DSChangeTouchSpeed(int choice)
     n3ds_touch_speed = BETWEEN(1, 10, n3ds_touch_speed + (choice ? 1 : -1));
 }
 
-static void M_N3DSToggleTouchLook(int choice)
+// Classic: only turning. Free: the C-stick and the touch screen look up
+// and down too (Crispy's "Allow Free Look", locked).
+static void M_N3DSToggleFreeLook(int choice)
 {
-    n3ds_touch_look = !n3ds_touch_look;
+    M_CrispySetFreelook(crispy->freelook == FREELOOK_OFF ? FREELOOK_LOCK
+                                                         : FREELOOK_OFF);
 }
 
 static void M_N3DSToggleMap(int choice)
@@ -797,7 +800,7 @@ static menuitem_t N3DSMenu[]=
     {3,"",	M_N3DSToggleRun,'r'},
     {3,"",	M_N3DSToggleTouchTurn,'t'},
     {3,"",	M_N3DSChangeTouchSpeed,'s'},
-    {3,"",	M_N3DSToggleTouchLook,'l'},
+    {3,"",	M_N3DSToggleFreeLook,'l'},
     {-1,"",0,'\0'},
     {1,"",	M_CrispnessNext,'n'},
     {1,"",	M_CrispnessPrev,'p'},
@@ -1806,7 +1809,9 @@ static void M_DrawN3DS(void)
     M_DrawCrispnessItem(n3ds_touchturn, "Turn with Touch Screen", n3ds_touch_turn, true);
     M_snprintf(speed, sizeof(speed), "%d", n3ds_touch_speed);
     M_DrawN3DSChoice(n3ds_touchspeed, "Touch Turning Speed", speed, n3ds_touch_turn);
-    M_DrawCrispnessItem(n3ds_touchlook, "Touch Looks Up/Down", n3ds_touch_look, n3ds_touch_turn);
+    M_DrawN3DSChoice(n3ds_freelook, "Camera",
+                     crispy->freelook == FREELOOK_OFF ? "Classic" : "Free Look",
+                     true);
 
     M_DrawCrispnessGoto(n3ds_next, "Next Page >");
     M_DrawCrispnessGoto(n3ds_prev, "< Last Page");

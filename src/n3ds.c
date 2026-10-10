@@ -196,7 +196,6 @@ void N3DS_BindVariables(void)
     M_BindIntVariable("n3ds_run_mode",       &n3ds_run_mode);
     M_BindIntVariable("n3ds_touch_turn",     &n3ds_touch_turn);
     M_BindIntVariable("n3ds_touch_speed",    &n3ds_touch_speed);
-    M_BindIntVariable("n3ds_touch_look",     &n3ds_touch_look);
 
     {
         int i;

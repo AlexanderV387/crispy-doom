@@ -1410,8 +1410,11 @@ void G_PrepTiccmd (void)
     }
 
 #ifdef __3DS__
-    // [3DS] Touch turning up and down looks, as the mouse look.
-    if (mousey && (crispy->mouselook || (n3ds_touch_turn && n3ds_touch_look)))
+    // [3DS] With Free Look, touch turning up and down looks, as the mouse
+    // look and as the C-stick do; classic, it only turns.
+    n3ds_touch_look = crispy->freelook != FREELOOK_OFF || crispy->mouselook;
+
+    if (mousey && n3ds_touch_look)
 #else
     if (mousey && crispy->mouselook)
 #endif

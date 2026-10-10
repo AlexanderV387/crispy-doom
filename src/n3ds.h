@@ -140,7 +140,7 @@ extern int n3ds_dual_stick;  // the C-stick turns (otherwise it strafes)
 extern int n3ds_run_mode;
 extern int n3ds_touch_turn;  // sliding on the bottom screen turns
 extern int n3ds_touch_speed; // 1-10
-extern int n3ds_touch_look;  // and up and down, with the mouse look
+extern int n3ds_touch_look;  // and up and down (the game sets it)
 
 // Set by the game: playing (in a level, with no menu).
 extern boolean (*N3DS_InGame)(void);

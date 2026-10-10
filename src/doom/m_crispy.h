@@ -64,6 +64,9 @@ extern void M_CrispyToggleExtAutomap(int choice);
 extern void M_CrispyToggleFlipcorpses(int choice);
 extern void M_CrispyToggleFreeaim(int choice);
 extern void M_CrispyToggleFreelook(int choice);
+#ifdef __3DS__
+extern void M_CrispySetFreelook(int value);
+#endif
 extern void M_CrispyToggleFullsounds(int choice);
 extern void M_CrispyToggleFpsLimit(int choice);
 extern void M_CrispyToggleHires(int choice);

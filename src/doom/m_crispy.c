@@ -399,6 +399,14 @@ void M_CrispyToggleFreelook(int choice)
     crispy->post_rendering_hook = M_CrispyToggleSkyHook;
 }
 
+#ifdef __3DS__
+void M_CrispySetFreelook(int value)
+{
+    crispy->freelook = value;
+    crispy->post_rendering_hook = M_CrispyToggleSkyHook;
+}
+#endif
+
 void M_CrispyToggleFullsounds(int choice)
 {
     int i;

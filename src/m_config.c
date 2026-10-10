@@ -813,7 +813,6 @@ static default_t extra_defaults_list[] =
 
     CONFIG_VARIABLE_INT(n3ds_touch_turn),
     CONFIG_VARIABLE_INT(n3ds_touch_speed),
-    CONFIG_VARIABLE_INT(n3ds_touch_look),
 
     //!
     // Nintendo 3DS: the buttons of each action (libctru's KEY_* bits).
