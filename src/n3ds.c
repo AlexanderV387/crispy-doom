@@ -658,6 +658,7 @@ static void PresentThread(void *arg)
 static void StartPresenting(void)
 {
     s32 priority = 0x30;
+    Result result;
 
     LightEvent_Init(&frame_ready, RESET_ONESHOT);
     LightEvent_Init(&frame_done, RESET_STICKY);
@@ -670,12 +671,14 @@ static void StartPresenting(void)
     }
 
     svcGetThreadPriority(&priority, CUR_THREAD_HANDLE);
-    APT_SetAppCpuTimeLimit(80);
+    result = APT_SetAppCpuTimeLimit(80);
     present_thread = threadCreate(PresentThread, NULL, 32 * 1024, priority,
                                   1, false);
 
-    printf("N3DS_Present: composing the screens on %s\n",
-           present_thread != NULL ? "core 1" : "the game's core");
+    // A .cia needs core 1 in its affinity mask (tools/3ds/app.rsf).
+    printf("N3DS_Present: composing the screens on %s (time limit: %08lx)\n",
+           present_thread != NULL ? "core 1" : "the game's core",
+           (unsigned long) result);
 }
 
 void N3DS_StopPresenting(void)
