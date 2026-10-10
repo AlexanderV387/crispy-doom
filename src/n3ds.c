@@ -132,7 +132,9 @@ void N3DS_Init(void)
 
             if (stream != NULL)
             {
-                setvbuf(stream, NULL, _IOLBF, 0);
+                // Whole lines: with no buffer, characters printed one by
+                // one (putchar) were one SD write each, ~5 ms in the .cia.
+                setvbuf(stream, NULL, _IOLBF, 1024);
                 console = stdout;
                 stdout = stream;
                 stderr = stream;
