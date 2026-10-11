@@ -1,11 +1,19 @@
-Crispy Doom for the New Nintendo 3DS, based on [Crispy Doom](https://github.com/fabiangreffrath/crispy-doom) 7.1: Doom as it was on DOS, in widescreen, at 60 FPS, with the status bar and the automap on the bottom screen.
+Crispy Doom and Crispy Strife for the New Nintendo 3DS, based on [Crispy Doom](https://github.com/fabiangreffrath/crispy-doom) 7.1: Doom and Strife as they were on DOS, in widescreen, at 60 FPS, with the status bar and the automap on the bottom screen.
+
+## New in 1.0.1
+
+- **Strife** (`crispy-strife`): voices, the inventory on the bottom screen (tap an item to choose it, tap it again to use it), the dialogs with A and B.
+- **Keyboard on the bottom screen:** the keyboard button at the top left of the map opens it; it also opens when the game asks for text (the character's name in Strife). Cheats work as on a PC keyboard.
+- **Camera:** in Doom, "Camera: Classic / Free Look" on the Nintendo 3DS page; with Free Look the C-stick and touch turning also look up and down. In Strife they always do, as in the original.
+- **Settings are saved when a menu closes** (if anything changed), so a crash or an empty battery no longer loses them.
+- Smooth pixel scaling is off by default (faster); "Run" centering the view is off by default in Strife.
 
 ## Downloads
 
 | File | Use |
 |---|---|
-| `crispy-doom.cia` | Install with FBI; it appears on the HOME Menu |
-| `crispy-doom.3dsx` | Copy to `/3ds/` and open it from the Homebrew Launcher |
+| `crispy-doom.cia`, `crispy-strife.cia` | Install with FBI; they appear on the HOME Menu |
+| `crispy-doom.3dsx`, `crispy-strife.3dsx` | Copy to `/3ds/` and open them from the Homebrew Launcher |
 
 Copy the game data (IWADs) to `/3ds/crispy-doom/` (game data is not included: use your own copy, the free shareware `doom1.wad` or [Freedoom](https://freedoom.github.io/)):
 
@@ -18,20 +26,22 @@ Copy the game data (IWADs) to `/3ds/crispy-doom/` (game data is not included: us
 | Freedoom (free) | `freedoom1.wad`, `freedoom2.wad`, `freedm.wad` |
 | Also | `chex.wad`, `hacx.wad`, `rekkrsa.wad` |
 
+Strife: copy `strife1.wad` and `voices.wad` (GOG, Steam) to `/3ds/crispy-strife/` (the GOG and Steam "Veteran Edition" includes both).
+
 Mods (`.wad`, `.deh`, `.bex`) go in `/3ds/crispy-doom/mods/`. With more than one game or any mod, a menu chooses them at startup and remembers the last choice; in the `.cia`, Quit goes back to it. Crispy Doom plays vanilla and limit-removing mods; Boom/MBF mods need another port.
 
 ## Features
 
 - **60 FPS** with the whole top screen (400x240) for the view, uncapped with interpolation. The screens are composed on the system core, so the game keeps its own.
 - **Bottom screen:** status bar and automap (only what you have seen, centered on you), with **+** / **-** zoom buttons. Status bar above or below the map; with a smaller view the bar goes back to the top screen and the map fills the bottom one. A tap turns the bottom screen off when it shows nothing.
-- **Controls:** Circle Pad moves and strafes, C-stick turns (or classic: the Circle Pad turns and the C-stick strafes); with "Allow Free Look", the C-stick also looks up and down. R / ZR fire, A uses, B / ZL run, L strafes, X / Y change weapons, SELECT opens the automap. Every action can be rebound (Crispness → Buttons), with several buttons each.
+- **Controls:** Circle Pad moves and strafes, C-stick turns (or classic: the Circle Pad turns and the C-stick strafes); with Free Look, the C-stick also looks up and down. R / ZR fire, A uses, B / ZL run, L strafes, X / Y change weapons, SELECT opens the automap. Every action can be rebound (Crispness → Buttons), with several buttons each.
 - **Run:** hold the button, press it once (until you stop), or tilt the Circle Pad all the way.
 - **Touch turning:** slide on the bottom screen to turn (optional, with its own speed); the map's zoom buttons still work.
 - **Menus:** A accepts, B goes back (and closes the main menu), START opens and closes the menu.
 - **Nintendo 3DS options** (Options → Crispness, first page): automap, status bar position, frame counter, smooth scaling, controls.
 - Starts in about 1.3 seconds; the settings are saved when you press HOME, so closing from there is instant; saves never stall on the SD card.
 - Old 3DS: detected (no high resolution, music at 22050 Hz), but untested.
-- Measured on a New 3DS: Doom 57-60 FPS in the heaviest fights; Freedoom's more detailed maps dip to about 54. High resolution runs at 30 FPS.
+- Measured on a New 3DS: Doom 57-60 FPS in the heaviest fights; Freedoom's more detailed maps dip to about 54; Strife 50-60 (its larger areas, about 45). High resolution runs at 30 FPS.
 
 ## Known issues
 

@@ -18,18 +18,24 @@ jobs:
       - name: Build SDL2 and SDL2_mixer
         run: sh tools/3ds/build-deps.sh
 
-      - name: Build Crispy Doom
-        run: sh tools/3ds/build.sh --target crispy-doom_3dsx
+      - name: Build Crispy Doom and Crispy Strife
+        run: |
+          sh tools/3ds/build.sh --target crispy-doom_3dsx
+          sh tools/3ds/build.sh --target crispy-strife_3dsx
 
       - uses: actions/upload-artifact@v4
         with:
           name: crispy-doom-3dsx
-          path: build-3ds/src/crispy-doom.3dsx
+          path: |
+            build-3ds/src/crispy-doom.3dsx
+            build-3ds/src/crispy-strife.3dsx
 
       - uses: actions/upload-artifact@v4
         with:
           name: crispy-doom-elf
-          path: build-3ds/src/crispy-doom.elf
+          path: |
+            build-3ds/src/crispy-doom.elf
+            build-3ds/src/crispy-strife.elf
 
   cia:
     needs: build
@@ -52,11 +58,17 @@ jobs:
             "Crispy Doom" "Doom, Doom II, Final Doom and mods" \
             "AlexanderV387, Fabian Greffrath" \
             0xF3D56 CTR-H-CRDM assets/icon.png assets/banner.png assets/banner.wav
+          tools/3ds/make-cia.sh crispy-strife.elf crispy-strife.cia \
+            "Crispy Strife" "Strife for 3DS" \
+            "AlexanderV387, Fabian Greffrath" \
+            0xF3D57 CTR-H-CRST assets/strife/icon.png assets/strife/banner.png assets/banner.wav
 
       - uses: actions/upload-artifact@v4
         with:
           name: crispy-doom-cia
-          path: crispy-doom.cia
+          path: |
+            crispy-doom.cia
+            crispy-strife.cia
 
   release:
     # A commit on n3ds whose message contains [release] publishes a GitHub
@@ -84,8 +96,10 @@ jobs:
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          name: Crispy Doom 3DS ${{ steps.version.outputs.tag }}
+          name: Crispy Doom and Strife 3DS ${{ steps.version.outputs.tag }}
           body_path: n3ds/RELEASE_NOTES.md
           files: |
             dist/crispy-doom.cia
             dist/crispy-doom.3dsx
+            dist/crispy-strife.cia
+            dist/crispy-strife.3dsx
