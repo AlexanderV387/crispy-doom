@@ -47,4 +47,4 @@ Mods (`.wad`, `.deh`, `.bex`) go in `/3ds/crispy-doom/mods/`. With more than one
 
 - The `.cia` takes about 3 seconds to reach the title screen (the `.3dsx`, 1.3): some log lines wait on the SD card.
 
-Port by AlexanderV387 for [n3ds-ports](https://github.com/AlexanderV387/n3ds-ports). Crispy Doom by Fabian Greffrath and contributors, based on Chocolate Doom; GPL-2.0.
+Port for [n3ds-ports](https://github.com/AlexanderV387/n3ds-ports): direction, design and hardware testing by AlexanderV387; code written with Claude (AI). Original engine: Crispy Doom (Fabian Greffrath and contributors), based on Chocolate Doom; GPL-2.0.
