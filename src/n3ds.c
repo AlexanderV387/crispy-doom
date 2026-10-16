@@ -183,6 +183,7 @@ int n3ds_hud_position = 0;
 int n3ds_smooth_scaling = 0; // faster, and sharp
 int n3ds_show_fps = 0;
 int n3ds_map_zoom = 150;
+int n3ds_weapon_bar = 0;
 int n3ds_config_version = 0;
 
 void N3DS_BindVariables(void)
@@ -192,6 +193,7 @@ void N3DS_BindVariables(void)
     M_BindIntVariable("n3ds_smooth_scaling", &n3ds_smooth_scaling);
     M_BindIntVariable("n3ds_show_fps",       &n3ds_show_fps);
     M_BindIntVariable("n3ds_map_zoom",       &n3ds_map_zoom);
+    M_BindIntVariable("n3ds_weapon_bar",     &n3ds_weapon_bar);
     M_BindIntVariable("n3ds_dual_stick",     &n3ds_dual_stick);
     M_BindIntVariable("n3ds_run_mode",       &n3ds_run_mode);
     M_BindIntVariable("n3ds_touch_turn",     &n3ds_touch_turn);
@@ -956,6 +958,61 @@ static void DrawText(pixel_t *screen, int x, int y, const char *text, int scale,
     for (; *text != '\0'; ++text, x += 6 * scale)
     {
         DrawChar(screen, x, y, *text, scale, color);
+    }
+}
+
+// ==========================================================================
+// The weapon buttons: a row of numbers at the bottom of the bottom screen,
+// as the PC's number keys. A touch on one holds that number's key while
+// the finger is on it. The weapons held are white, the one in hand on
+// gray, the others dark.
+
+void N3DS_DrawWeaponButtons(pixel_t *screen, int y, int slots, unsigned owned,
+                            int in_hand)
+{
+    const int pitch = N3DS_BOTTOM_WIDTH / slots;
+    int slot;
+
+    for (slot = 0; slot < slots; ++slot)
+    {
+        const int x = slot * pitch + 2;
+        const int w = pitch - 4;
+        const char digit[2] = { (char) ('1' + slot), '\0' };
+
+        FillRect(screen, x, y + 2, w, N3DS_WEAPON_BAR_HEIGHT - 4, ui_gray);
+        FillRect(screen, x + 2, y + 4, w - 4, N3DS_WEAPON_BAR_HEIGHT - 8,
+                 slot == in_hand ? ui_gray : ui_black);
+        DrawText(screen, x + (w - 10) / 2, y + (N3DS_WEAPON_BAR_HEIGHT - 14) / 2,
+                 digit, 2, slot == in_hand ? ui_black
+                         : (owned & (1u << slot)) ? ui_white : ui_dark);
+    }
+}
+
+void N3DS_UpdateWeaponButtons(int y, int slots)
+{
+    static int key_down = 0;
+    int x, ty;
+    const boolean touching = N3DS_GetTouch(&x, &ty);
+    event_t ev;
+
+    N3DS_ReserveTouch(0, y, N3DS_BOTTOM_WIDTH, N3DS_WEAPON_BAR_HEIGHT);
+
+    ev.data2 = ev.data3 = 0;
+
+    if (key_down != 0 && !touching)
+    {
+        ev.type = ev_keyup;
+        ev.data1 = key_down;
+        D_PostEvent(&ev);
+        key_down = 0;
+    }
+
+    if (key_down == 0 && touching && ty >= y && x >= 0 && x < N3DS_BOTTOM_WIDTH)
+    {
+        key_down = '1' + x * slots / N3DS_BOTTOM_WIDTH;
+        ev.type = ev_keydown;
+        ev.data1 = key_down;
+        D_PostEvent(&ev);
     }
 }
 

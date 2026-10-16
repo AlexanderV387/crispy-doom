@@ -83,6 +83,7 @@ extern int n3ds_hud_position;   // status bar: 0 top, 1 middle, 2 bottom
 extern int n3ds_smooth_scaling; // blend rows when stretching to 240 rows
 extern int n3ds_show_fps;       // frame counter on the bottom screen
 extern int n3ds_map_zoom;       // bottom screen map: % of each level's zoom
+extern int n3ds_weapon_bar;     // weapon buttons at the bottom
 extern int n3ds_config_version; // for changes to older configurations
 
 void N3DS_BindVariables(void);
@@ -90,6 +91,14 @@ void N3DS_BindVariables(void);
 // Bottom screen, 8-bit like the game's own screen.
 #define N3DS_BOTTOM_WIDTH 320
 #define N3DS_BOTTOM_HEIGHT 240
+
+// The weapon buttons (n3ds_weapon_bar): a row of numbered buttons at row
+// y, the weapons of the bits of owned white, in_hand's on gray; a touch on
+// one holds that number's key while touched (call it with each drawing).
+#define N3DS_WEAPON_BAR_HEIGHT 24
+void N3DS_DrawWeaponButtons(pixel_t *screen, int y, int slots, unsigned owned,
+                            int in_hand);
+void N3DS_UpdateWeaponButtons(int y, int slots);
 
 // Where the bottom screen is being touched, if it is.
 boolean N3DS_GetTouch(int *x, int *y);

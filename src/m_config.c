@@ -774,6 +774,12 @@ static default_t extra_defaults_list[] =
     CONFIG_VARIABLE_INT(n3ds_hud_position),
 
     //!
+    // Nintendo 3DS: weapon buttons at the bottom of the bottom screen.
+    //
+
+    CONFIG_VARIABLE_INT(n3ds_weapon_bar),
+
+    //!
     // Nintendo 3DS: blend rows when stretching the image to 240 rows.
     //
 

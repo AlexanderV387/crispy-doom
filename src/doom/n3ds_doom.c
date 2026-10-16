@@ -17,7 +17,7 @@
 //     the bar above the map, or below it with its option. With a smaller
 //     view the bar is on the top screen, as in the original, and the map
 //     fills the bottom screen. Only its option hides the map. Buttons on
-//     the map zoom it.
+//     the map zoom it. With their option, weapon buttons at the bottom.
 //
 
 #ifdef __3DS__
@@ -86,6 +86,34 @@ static void DrawMap(pixel_t *screen, int y, int height)
     N3DS_DrawMapButtons(screen, y, height, 100, 0, 4);
 }
 
+// The weapon buttons: Doom's seven numbers, the chainsaw with the fist and
+// the super shotgun with the shotgun, as their keys.
+static void DrawWeaponButtons(pixel_t *screen, int y)
+{
+    static const int slot_of[NUMWEAPONS] =
+    {
+        [wp_fist] = 0, [wp_pistol] = 1, [wp_shotgun] = 2, [wp_chaingun] = 3,
+        [wp_missile] = 4, [wp_plasma] = 5, [wp_bfg] = 6, [wp_chainsaw] = 0,
+        [wp_supershotgun] = 2,
+    };
+    const player_t *const player = &players[displayplayer];
+    unsigned owned = 0;
+    int w;
+
+    for (w = 0; w < NUMWEAPONS; ++w)
+    {
+        if (player->weaponowned[w])
+        {
+            owned |= 1u << slot_of[w];
+        }
+    }
+
+    N3DS_DrawWeaponButtons(screen, y, 7, owned,
+                           player->readyweapon < NUMWEAPONS
+                           ? slot_of[player->readyweapon] : -1);
+    N3DS_UpdateWeaponButtons(y, 7);
+}
+
 boolean N3DS_DoomInGame(void)
 {
     return gamestate == GS_LEVEL && !menuactive && !demoplayback;
@@ -95,13 +123,16 @@ boolean N3DS_DoomDrawBottom(pixel_t *screen)
 {
     const boolean bar = screenblocks == FULL_VIEW;
     const boolean map = n3ds_bottom_map != 0;
-    const int map_height = N3DS_BOTTOM_HEIGHT - (bar ? ST_HEIGHT : 0);
+    const boolean weapons = n3ds_weapon_bar != 0;
+    // The weapon buttons take the bottom rows; the rest as before.
+    const int height = N3DS_BOTTOM_HEIGHT - (weapons ? N3DS_WEAPON_BAR_HEIGHT : 0);
+    const int map_height = height - (bar ? ST_HEIGHT : 0);
 
     // The buttons set it again when they are drawn.
     N3DS_ClearReservedTouch();
 
     if (gamestate != GS_LEVEL || !gametic || players[displayplayer].mo == NULL
-     || (!bar && !map))
+     || (!bar && !map && !weapons))
     {
         return false;
     }
@@ -110,7 +141,11 @@ boolean N3DS_DoomDrawBottom(pixel_t *screen)
     {
         // Top, middle or bottom of the screen.
         memset(screen, 0, N3DS_BOTTOM_WIDTH * N3DS_BOTTOM_HEIGHT * sizeof(*screen));
-        DrawStatusBar(screen, n3ds_hud_position * (N3DS_BOTTOM_HEIGHT - ST_HEIGHT) / 2);
+
+        if (bar)
+        {
+            DrawStatusBar(screen, n3ds_hud_position * (height - ST_HEIGHT) / 2);
+        }
     }
     else if (bar && n3ds_hud_position == 2)
     {
@@ -124,7 +159,14 @@ boolean N3DS_DoomDrawBottom(pixel_t *screen)
             DrawStatusBar(screen, 0);
         }
 
-        DrawMap(screen, N3DS_BOTTOM_HEIGHT - map_height, map_height);
+        DrawMap(screen, height - map_height, map_height);
+    }
+
+    if (weapons)
+    {
+        memset(screen + height * N3DS_BOTTOM_WIDTH, 0,
+               N3DS_WEAPON_BAR_HEIGHT * N3DS_BOTTOM_WIDTH * sizeof(*screen));
+        DrawWeaponButtons(screen, height);
     }
 
     return true;

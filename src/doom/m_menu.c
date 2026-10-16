@@ -708,6 +708,7 @@ enum
     n3ds_sep_bottom,
     n3ds_map,
     n3ds_hud,
+    n3ds_weapons,
     n3ds_fps,
     n3ds_sep_bottom_,
 
@@ -775,6 +776,11 @@ static void M_N3DSToggleHud(int choice)
     }
 }
 
+static void M_N3DSToggleWeapons(int choice)
+{
+    n3ds_weapon_bar = !n3ds_weapon_bar;
+}
+
 static void M_N3DSToggleFps(int choice)
 {
     n3ds_show_fps = !n3ds_show_fps;
@@ -790,6 +796,7 @@ static menuitem_t N3DSMenu[]=
     {-1,"",0,'\0'},
     {3,"",	M_N3DSToggleMap,'m'},
     {3,"",	M_N3DSToggleHud,'s'},
+    {3,"",	M_N3DSToggleWeapons,'w'},
     {3,"",	M_N3DSToggleFps,'f'},
     {-1,"",0,'\0'},
     {-1,"",0,'\0'},
@@ -1798,6 +1805,7 @@ static void M_DrawN3DS(void)
     M_DrawCrispnessItem(n3ds_map, "Automap", n3ds_bottom_map, true);
     // The status bar is there with the full view (screen size 11).
     M_DrawN3DSChoice(n3ds_hud, "Status Bar", hud, screenblocks == 11);
+    M_DrawCrispnessItem(n3ds_weapons, "Weapon Buttons", n3ds_weapon_bar, true);
     M_DrawCrispnessItem(n3ds_fps, "Frame Counter", n3ds_show_fps, true);
 
     M_DrawCrispnessSeparator(n3ds_sep_top, "Top Screen");
