@@ -1,5 +1,9 @@
 Crispy Doom and Crispy Strife for the New Nintendo 3DS, based on [Crispy Doom](https://github.com/fabiangreffrath/crispy-doom) 7.1: Doom and Strife as they were on DOS, in widescreen, at 60 FPS, with the status bar and the automap on the bottom screen.
 
+## New in 1.1.0
+
+- **Weapon buttons on the bottom screen** (option "Weapon Buttons" on the Nintendo 3DS page): a row of numbers under the map; tap one to take that weapon.
+
 ## New in 1.0.1
 
 - **Strife** (`crispy-strife`): voices, the inventory on the bottom screen (tap an item to choose it, tap it again to use it), the dialogs with A and B.
