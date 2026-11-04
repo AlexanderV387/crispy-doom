@@ -52,3 +52,13 @@ Mods (`.wad`, `.deh`, `.bex`) go in `/3ds/crispy-doom/mods/`. With more than one
 - The `.cia` takes about 3 seconds to reach the title screen (the `.3dsx`, 1.3): some log lines wait on the SD card.
 
 Port for [n3ds-ports](https://github.com/AlexanderV387/n3ds-ports): direction, design and hardware testing by AlexanderV387; code written with Claude (AI). Original engine: Crispy Doom (Fabian Greffrath and contributors), based on Chocolate Doom; GPL-2.0.
+
+## Tested
+
+On a New Nintendo 3DS:
+
+- IWADs: `doom1.wad`, `doom2.wad`, `freedoom1.wad`, `freedoom2.wad`.
+- Strife: `strife1.wad` and `voices.wad` (GOG).
+- Mods: D4V (`D4V.wad`, `D4V.deh`, `D4V-3_HELLST.deh`, `D4V-3_REAPER.deh`), `SD21.wad` with `SD21-BloodPatch.wad`, `eviternity.wad`, `nuts.wad`, `nuts3.wad`, `planisf2.wad`, `frozent.wad`, `d2spfx20.wad` with `d2dehfix.deh`, `mensajes-espanol.bex`.
+
+Not tested yet: `doom.wad`, Final Doom, `freedm.wad`, Chex Quest, HACX, REKKR.
