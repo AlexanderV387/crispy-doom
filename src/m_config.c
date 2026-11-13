@@ -780,6 +780,13 @@ static default_t extra_defaults_list[] =
     CONFIG_VARIABLE_INT(n3ds_weapon_bar),
 
     //!
+    // Nintendo 3DS: depth of the stereoscopic 3D with the 3D slider up,
+    // 0 (off) to 5.
+    //
+
+    CONFIG_VARIABLE_INT(n3ds_stereo_depth),
+
+    //!
     // Nintendo 3DS: blend rows when stretching the image to 240 rows.
     //
 
