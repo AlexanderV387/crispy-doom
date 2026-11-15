@@ -753,6 +753,10 @@ void R_AddSprites (sector_t* sec)
 
 boolean pspr_interp = true; // [crispy] interpolate weapon bobbing
 
+#ifdef __3DS__
+extern fixed_t r_stereo_psprite_shift; // [3DS] r_main.c
+#endif
+
 void R_DrawPSprite (pspdef_t* psp, psprnum_t psprnum) // [crispy] read psprnum
 {
     fixed_t		tx;
@@ -902,6 +906,36 @@ void R_DrawPSprite (pspdef_t* psp, psprnum_t psprnum) // [crispy] read psprnum
             pspr_interp = true;
         }
     }
+
+#ifdef __3DS__
+    // [3DS] Stereoscopic 3D: each eye sees the weapon a little apart. Moved
+    // after the bobbing's interpolation, which remembers the last position
+    // drawn: with both eyes there, the right eye slid toward the left one's.
+    // Not the targeter, which marks the aim at screen depth.
+    if (r_stereo_psprite_shift != 0 && psprnum < ps_targcenter)
+    {
+        const int shift = (r_stereo_psprite_shift + FRACUNIT / 2) >> FRACBITS;
+        int sx1 = vis->x1 + shift;
+        int sx2 = vis->x2 + shift;
+
+        if (sx1 < 0)
+        {
+            vis->startfrac += vis->xiscale * -sx1;
+            sx1 = 0;
+        }
+        if (sx2 >= viewwidth)
+        {
+            sx2 = viewwidth - 1;
+        }
+        if (sx1 > sx2)
+        {
+            return;
+        }
+
+        vis->x1 = sx1;
+        vis->x2 = sx2;
+    }
+#endif
 
     // [crispy] free look
     vis->texturemid += FixedMul(pspriteiscale, (centery - viewheight / 2) << FRACBITS);

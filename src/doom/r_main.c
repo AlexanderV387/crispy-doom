@@ -42,6 +42,32 @@
 
 #include "p_mapformat.h" // [crispy] support extended node formats
 
+#ifdef __3DS__
+#include "i_video.h" // I_VideoBuffer
+#include "n3ds.h"
+
+// [3DS] Stereoscopic 3D (N3DS_StereoStrength). Each eye is moved sideways
+// by half the eye distance and turned in toward the point straight ahead at
+// STEREO_CONVERGENCE: there, the eyes see the same (screen depth); farther
+// is behind the screen, nearer in front. Turning (instead of shifting the
+// image) keeps every column of the view in both eyes, and the sky, drawn
+// by angle, lands at the farthest depth on its own.
+//
+// At the 3D slider's top, the default depth (3) puts what is far away
+// about 8 pixels apart (of the screen's 400), and a wall 24 units away
+// about 24 pixels apart the other way.
+
+#define STEREO_HALF_DISTANCE 4.0 // map units, at strength 1
+#define STEREO_CONVERGENCE 96.0  // map units
+#define STEREO_WEAPON_DEPTH 40.0 // map units: the weapon, in front of the screen
+
+static int stereo_eye = 0;       // 1 right, -1 left, 0 no stereo
+static fixed_t stereo_half_distance;
+static angle_t stereo_turn;
+fixed_t r_stereo_psprite_shift;  // the weapon's x on the screen, fixed point
+static fixed_t stereo_weapon_shift;
+#endif
+
 
 
 
@@ -1077,6 +1103,20 @@ void R_SetupFrame (player_t* player)
         pitch = player->lookdir / MLOOKUNIT + player->recoilpitch;
     }
 
+#ifdef __3DS__
+    // [3DS] Stereoscopic 3D: this eye's place and direction.
+    if (stereo_eye != 0)
+    {
+        const unsigned int right = (viewangle - ANG90) >> ANGLETOFINESHIFT;
+        const fixed_t side = stereo_eye * stereo_half_distance;
+
+        viewx += FixedMul(side, finecosine[right]);
+        viewy += FixedMul(side, finesine[right]);
+        // The right eye turns left (the angle grows counterclockwise).
+        viewangle += stereo_eye > 0 ? stereo_turn : -stereo_turn;
+    }
+#endif
+
     // [crispy] A11Y
     if (a11y_weapon_flash)
     {
@@ -1130,7 +1170,7 @@ void R_SetupFrame (player_t* player)
 //
 // R_RenderView
 //
-void R_RenderPlayerView (player_t* player)
+static void R_RenderEyeView (player_t* player)
 {	
     extern void V_DrawFilledBox (int x, int y, int w, int h, int c);
 
@@ -1181,4 +1221,49 @@ void R_RenderPlayerView (player_t* player)
 
     // Check for new console commands.
     NetUpdate ();				
+}
+
+void R_RenderPlayerView (player_t* player)
+{
+#ifdef __3DS__
+    // [3DS] Stereoscopic 3D: the right eye, then the left one (the frame
+    // goes on drawn over it). Not with the full automap, which only marks
+    // what is seen.
+    const float strength = N3DS_StereoStrength();
+
+    r_stereo_psprite_shift = 0;
+
+    if (strength > 0.0f && !(automapactive && !crispy->automapoverlay))
+    {
+        const double half = STEREO_HALF_DISTANCE * strength;
+        const double focal = (double) projection / FRACUNIT;
+        stereo_half_distance = (fixed_t) (half * FRACUNIT);
+        stereo_turn = (angle_t) (atan(half / STEREO_CONVERGENCE)
+                                 / (2.0 * M_PI) * 4294967296.0);
+        // Where the weapon is for each eye, on the screen.
+        stereo_weapon_shift = (fixed_t) (half * focal
+                                         * (1.0 / STEREO_CONVERGENCE
+                                            - 1.0 / STEREO_WEAPON_DEPTH)
+                                         * FRACUNIT);
+
+        stereo_eye = 1;
+        r_stereo_psprite_shift = stereo_weapon_shift;
+        R_RenderEyeView(player);
+        N3DS_StereoSaveEye(1, I_VideoBuffer, SCREENWIDTH, SCREENHEIGHT);
+
+        stereo_eye = -1;
+        r_stereo_psprite_shift = -stereo_weapon_shift;
+        R_RenderEyeView(player);
+        N3DS_StereoSaveEye(-1, I_VideoBuffer, SCREENWIDTH, SCREENHEIGHT);
+
+        // The view as the rest of the game sees it (the automap overlay)
+        // is again in between both eyes.
+        stereo_eye = 0;
+        r_stereo_psprite_shift = 0;
+        R_SetupFrame(player);
+        return;
+    }
+#endif
+
+    R_RenderEyeView(player);
 }

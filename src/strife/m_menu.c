@@ -607,7 +607,7 @@ enum
 
     n3ds_sep_top,
     n3ds_smooth,
-    n3ds_sep_top_,
+    n3ds_stereo, // in place of the blank row: the page stays the same height
 
     n3ds_sep_controls,
     n3ds_dualstick,
@@ -670,6 +670,13 @@ static void M_N3DSChangeTouchSpeed(int choice)
     n3ds_touch_speed = BETWEEN(1, 10, n3ds_touch_speed + (choice ? 1 : -1));
 }
 
+// Off, then 1 to N3DS_STEREO_MAX, with the 3D slider up.
+static void M_N3DSChangeStereo(int choice)
+{
+    n3ds_stereo_depth = (n3ds_stereo_depth + (choice ? 1 : N3DS_STEREO_MAX))
+                      % (N3DS_STEREO_MAX + 1);
+}
+
 static menuitem_t N3DSMenu[] =
 {
     {-1, "", 0, '\0'},
@@ -679,7 +686,7 @@ static menuitem_t N3DSMenu[] =
     {-1, "", 0, '\0'},
     {-1, "", 0, '\0'},
     {2, "", M_N3DSToggleSmooth, 's'},
-    {-1, "", 0, '\0'},
+    {2, "", M_N3DSChangeStereo, '3'},
     {-1, "", 0, '\0'},
     {2, "", M_N3DSToggleDualStick, 'd'},
     {2, "", M_N3DSToggleRun, 'r'},
@@ -1710,7 +1717,7 @@ static void M_DrawN3DS(void)
     static const char *const positions[] = {"Top", "Middle", "Bottom"};
     static const char *const run_modes[N3DS_NUM_RUN_MODES] =
         {"Hold Button", "Press Once", "Stick All the Way"};
-    char speed[8];
+    char speed[8], depth[8];
     const char *hud;
 
     if (n3ds_bottom_map)
@@ -1734,6 +1741,9 @@ static void M_DrawN3DS(void)
 
     M_DrawCrispnessSeparator(n3ds_sep_top, "Top Screen");
     M_DrawCrispnessItem(n3ds_smooth, "Smooth Pixel Scaling", n3ds_smooth_scaling, true);
+    M_snprintf(depth, sizeof(depth), "%d", n3ds_stereo_depth);
+    M_DrawN3DSChoice(n3ds_stereo, "3D Depth",
+                     n3ds_stereo_depth > 0 ? depth : "Off", true);
 
     M_DrawCrispnessSeparator(n3ds_sep_controls, "Controls");
     M_DrawN3DSChoice(n3ds_dualstick, "C-Stick", n3ds_dual_stick ? "Turn" : "Strafe", true);

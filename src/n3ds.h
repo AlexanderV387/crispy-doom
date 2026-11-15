@@ -85,6 +85,24 @@ extern int n3ds_show_fps;       // frame counter on the bottom screen
 extern int n3ds_map_zoom;       // bottom screen map: % of each level's zoom
 extern int n3ds_weapon_bar;     // weapon buttons at the bottom
 extern int n3ds_config_version; // for changes to older configurations
+extern int n3ds_stereo_depth;   // stereoscopic 3D: 0 off, 1 to N3DS_STEREO_MAX
+
+// ==========================================================================
+// Stereoscopic 3D. With the 3D slider up, the game renders its 3D view twice
+// (N3DS_StereoStrength above 0): the right eye first, then the left one,
+// each saved with N3DS_StereoSaveEye before anything else is drawn over it.
+// The left eye's frame goes on as usual; the right eye's frame is the same
+// frame with the right eye's view wherever nothing was drawn over the view
+// (menus, messages, the crosshair and the status bar stay at screen depth).
+
+#define N3DS_STEREO_MAX 5
+
+// 0 (no stereo: 3D slider down, option off, no 3D screen) to 1 (the slider
+// all the way up and the option at N3DS_STEREO_MAX).
+float N3DS_StereoStrength(void);
+
+// eye 1: right, -1: left. The whole frame, as it is after that eye's view.
+void N3DS_StereoSaveEye(int eye, const pixel_t *buffer, int width, int height);
 
 void N3DS_BindVariables(void);
 

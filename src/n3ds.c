@@ -185,9 +185,11 @@ int n3ds_show_fps = 0;
 int n3ds_map_zoom = 150;
 int n3ds_weapon_bar = 0;
 int n3ds_config_version = 0;
+int n3ds_stereo_depth = 3;
 
 void N3DS_BindVariables(void)
 {
+    M_BindIntVariable("n3ds_stereo_depth",   &n3ds_stereo_depth);
     M_BindIntVariable("n3ds_bottom_map",     &n3ds_bottom_map);
     M_BindIntVariable("n3ds_hud_position",   &n3ds_hud_position);
     M_BindIntVariable("n3ds_smooth_scaling", &n3ds_smooth_scaling);
@@ -613,7 +615,9 @@ static void DrawFrameCounter(u32 *framebuffer)
 typedef struct
 {
     pixel_t *top;
+    pixel_t *top_right;     // the right eye's frame, with stereo
     int top_size;
+    boolean stereo;         // top_right is there
     int width, height;
     u32 colors[256];        // palette in the framebuffer format (RGBA8)
     boolean bottom;         // the bottom screen is updated (every other frame)
@@ -627,9 +631,206 @@ static Thread present_thread = NULL;
 static volatile boolean present_quit = false;
 static u64 compose_ticks; // composing the last frame
 
+// ==========================================================================
+// Stereoscopic 3D (n3ds.h). Both eyes' views are saved as whole frames
+// (about 80 KB each, 320 KB in high resolution): copying only the view
+// window would save little, and the frame needs no bookkeeping of where the
+// view is (screen size, high resolution, the automap overlay).
+
+static pixel_t *eye_right, *eye_left;
+static int eye_size = 0;
+static boolean eyes_saved = false; // both eyes, for the frame being drawn
+
+float N3DS_StereoStrength(void)
+{
+    float slider;
+
+    if (n3ds_stereo_depth <= 0)
+    {
+        return 0.0f;
+    }
+
+    // 0 on the 2DS, which has no 3D screen.
+    slider = osGet3DSliderState();
+
+    if (slider <= 0.0f)
+    {
+        return 0.0f;
+    }
+
+    return slider * (n3ds_stereo_depth > N3DS_STEREO_MAX ? N3DS_STEREO_MAX
+                                                         : n3ds_stereo_depth)
+         / N3DS_STEREO_MAX;
+}
+
+void N3DS_StereoSaveEye(int eye, const pixel_t *buffer, int width, int height)
+{
+    const int size = width * height;
+
+    if (eye_size < size)
+    {
+        free(eye_right);
+        free(eye_left);
+        eye_right = malloc(size * sizeof(*eye_right));
+        eye_left = malloc(size * sizeof(*eye_left));
+        eye_size = eye_right != NULL && eye_left != NULL ? size : 0;
+    }
+
+    if (eye_size < size)
+    {
+        eyes_saved = false;
+        return;
+    }
+
+    memcpy(eye > 0 ? eye_right : eye_left, buffer, size * sizeof(*buffer));
+
+    // The right eye comes first: the frame has both with the left one.
+    eyes_saved = eye < 0;
+}
+
+// The right eye's frame: the finished frame (drawn over the left eye's
+// view), with the right eye's view wherever a pixel is still the left eye's
+// view. A pixel drawn over with the same color takes the right eye's: the
+// difference is hardly ever visible. Frames without both eyes (wipes, the
+// full automap, the slider down) are flat.
+static void ComposeRightEye(const pixel_t *buffer, int size)
+{
+    int k;
+
+    frame.stereo = false;
+
+    if (!eyes_saved || eye_size < size)
+    {
+        return;
+    }
+
+    eyes_saved = false;
+
+    if (frame.top_right == NULL)
+    {
+        frame.top_right = malloc(frame.top_size * sizeof(*frame.top_right));
+
+        if (frame.top_right == NULL)
+        {
+            return;
+        }
+    }
+
+    for (k = 0; k < size; ++k)
+    {
+        frame.top_right[k] = buffer[k] == eye_left[k] ? eye_right[k] : buffer[k];
+    }
+
+    frame.stereo = true;
+}
+
+// Test tool (built with -DN3DS_TEST_TOOLS): with a "shots" folder in the
+// data folder, both eyes of the top screen are saved every 4 seconds as
+// shotNN.bmp (left) and shotNNr.bmp (right), 40 names, wrapping; a flat
+// frame saves only the left one. With "shots/burst" there too, 8 frames in
+// a row each time: shotNNa.bmp to shotNNh.bmp (and shotNNar.bmp...).
+#ifdef N3DS_TEST_TOOLS
+static void SaveShot(const char *path, gfx3dSide_t side)
+{
+    const u32 *framebuffer = (const u32 *) gfxGetFramebuffer(GFX_TOP, side,
+                                                             NULL, NULL);
+    static u8 row[TOP_WIDTH * 3];
+    u8 header[54] = {'B', 'M'};
+    FILE *file;
+    int x, y;
+
+    file = fopen(path, "wb");
+
+    if (file == NULL)
+    {
+        return;
+    }
+
+#define PUT32(o, v) (header[o] = (v) & 0xFF, header[(o) + 1] = ((v) >> 8) & 0xFF, \
+                     header[(o) + 2] = ((v) >> 16) & 0xFF, header[(o) + 3] = (u32) (v) >> 24)
+    PUT32(2, 54 + sizeof(row) * TOP_HEIGHT);
+    PUT32(10, 54);
+    PUT32(14, 40);
+    PUT32(18, TOP_WIDTH);
+    PUT32(22, TOP_HEIGHT);
+    header[26] = 1;
+    header[28] = 24;
+#undef PUT32
+    fwrite(header, 1, sizeof(header), file);
+
+    // Bottom row first; the framebuffer is rotated (see ComposeTop).
+    for (y = TOP_HEIGHT - 1; y >= 0; --y)
+    {
+        for (x = 0; x < TOP_WIDTH; ++x)
+        {
+            const u32 c = framebuffer[x * TOP_HEIGHT + (TOP_HEIGHT - 1 - y)];
+
+            row[x * 3] = (c >> 8) & 0xFF;      // B
+            row[x * 3 + 1] = (c >> 16) & 0xFF; // G
+            row[x * 3 + 2] = c >> 24;          // R
+        }
+
+        fwrite(row, 1, sizeof(row), file);
+    }
+
+    fclose(file);
+}
+
+static void SaveTestShots(boolean stereo)
+{
+    static int shot = 0, enabled = -1, burst = 0, in_burst = 0;
+    static u64 last = 0;
+    const u64 now = osGetTime();
+    char path[128], name[8] = "";
+
+    if (enabled < 0)
+    {
+        struct stat st;
+
+        enabled = stat(N3DS_DATA_DIR "shots", &st) == 0;
+        burst = stat(N3DS_DATA_DIR "shots/burst", &st) == 0;
+    }
+
+    if (!enabled || (in_burst == 0 && now - last < 4000))
+    {
+        return;
+    }
+
+    if (burst)
+    {
+        name[0] = 'a' + in_burst;
+        in_burst = (in_burst + 1) % 8;
+    }
+
+    if (in_burst <= 1)
+    {
+        last = now;
+    }
+
+    M_snprintf(path, sizeof(path), "%sshots/shot%02d%s.bmp", N3DS_DATA_DIR, shot, name);
+    SaveShot(path, GFX_LEFT);
+
+    if (stereo)
+    {
+        M_snprintf(path, sizeof(path), "%sshots/shot%02d%sr.bmp", N3DS_DATA_DIR, shot, name);
+        SaveShot(path, GFX_RIGHT);
+    }
+
+    printf("N3DS: shot %02d%s%s\n", shot, name, stereo ? " (both eyes)" : "");
+
+    if (in_burst == 0)
+    {
+        shot = (shot + 1) % 40;
+    }
+}
+#else
+#define SaveTestShots(stereo) ((void) 0)
+#endif
+
 // The top screen (400x240): the frame stretched from its height to 240
 // rows (Doom's 1.2 pixel aspect ratio) and centered when narrower than 400.
-static void ComposeTop(const frame_t *f)
+static void ComposeTop(const frame_t *f, const pixel_t *top,
+                       gfx3dSide_t side)
 {
     static int rows[TOP_HEIGHT];
     static u32 weights[TOP_HEIGHT];
@@ -656,7 +857,7 @@ static void ComposeTop(const frame_t *f)
         rows_smooth = n3ds_smooth_scaling;
     }
 
-    framebuffer = (u32 *) gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
+    framebuffer = (u32 *) gfxGetFramebuffer(GFX_TOP, side, NULL, NULL);
 
     // High resolution rendering (twice as wide and high): each screen pixel
     // is the average of 2x2 pixels, the screen's height from its 400 rows.
@@ -670,7 +871,7 @@ static void ComposeTop(const frame_t *f)
         for (y = 0; y < TOP_HEIGHT; ++y)
         {
             const int source_y = y * f->height / TOP_HEIGHT;
-            const pixel_t *row0 = f->top + source_y * f->width;
+            const pixel_t *row0 = top + source_y * f->width;
             const pixel_t *row1 = source_y + 1 < f->height ? row0 + f->width : row0;
             u32 *pixel = framebuffer + left * TOP_HEIGHT + (TOP_HEIGHT - 1 - y);
 
@@ -708,7 +909,7 @@ static void ComposeTop(const frame_t *f)
 
         for (y = 0; y < TOP_HEIGHT; ++y)
         {
-            const pixel_t *source = f->top + rows[y] + x;
+            const pixel_t *source = top + rows[y] + x;
             const u32 weight = weights[y];
 
             if (weight == 0)
@@ -740,7 +941,6 @@ static void ComposeTop(const frame_t *f)
 
 composed:
     GSPGPU_FlushDataCache(framebuffer, TOP_WIDTH * TOP_HEIGHT * sizeof(u32));
-    gfxScreenSwapBuffers(GFX_TOP, false);
 }
 
 static void ComposeBottom(const frame_t *f)
@@ -797,9 +997,26 @@ static void ComposeBottom(const frame_t *f)
 
 static void ShowFrame(void)
 {
+    static boolean stereo_on = false;
     const u64 start = svcGetSystemTick();
 
-    ComposeTop(&frame);
+    // The top screen's 3D mode follows the frames: two framebuffers (the
+    // right one) only while there are two eyes.
+    if (frame.stereo != stereo_on)
+    {
+        stereo_on = frame.stereo;
+        gfxSet3D(stereo_on);
+    }
+
+    ComposeTop(&frame, frame.top, GFX_LEFT);
+
+    if (stereo_on)
+    {
+        ComposeTop(&frame, frame.top_right, GFX_RIGHT);
+    }
+
+    gfxScreenSwapBuffers(GFX_TOP, stereo_on);
+    SaveTestShots(stereo_on);
 
     if (frame.bottom)
     {
@@ -1218,11 +1435,14 @@ void N3DS_Present(const pixel_t *buffer, int width, int height,
     if (frame.top_size < width * height)
     {
         free(frame.top);
+        free(frame.top_right);
+        frame.top_right = NULL;
         frame.top_size = width * height;
         frame.top = malloc(frame.top_size * sizeof(*frame.top));
     }
 
     memcpy(frame.top, buffer, width * height * sizeof(*frame.top));
+    ComposeRightEye(buffer, width * height);
     frame.width = width;
     frame.height = height;
 
@@ -1488,7 +1708,7 @@ static void BackToPicker(void)
 
 boolean N3DS_PickGame(int *argc, char ***argv)
 {
-    static char *args[8];
+    static char *args[24];
     const char *games[arrlen(iwad_names)];
     const char *game_files[arrlen(iwad_names)];
     char *mods[MAX_MODS + 1];
@@ -1625,6 +1845,31 @@ boolean N3DS_PickGame(int *argc, char ***argv)
         args[i++] = !strcasecmp(dot, ".wad") ? "-file" : "-deh";
         args[i++] = mod_path;
     }
+
+#ifdef N3DS_TEST_TOOLS
+    // Test tool: more arguments from args.txt in the data folder (such as
+    // "-warp 1 1 -skill 3 -nomonsters"), separated by spaces or lines.
+    {
+        static char extra[256];
+        FILE *args_file = fopen(N3DS_DATA_DIR "args.txt", "r");
+
+        if (args_file != NULL)
+        {
+            const size_t length = fread(extra, 1, sizeof(extra) - 1, args_file);
+            char *token;
+
+            fclose(args_file);
+            extra[length] = '\0';
+
+            for (token = strtok(extra, " \t\r\n");
+                 token != NULL && i < (int) arrlen(args) - 1;
+                 token = strtok(NULL, " \t\r\n"))
+            {
+                args[i++] = token;
+            }
+        }
+    }
+#endif
 
     args[i] = NULL;
     *argc = i;
